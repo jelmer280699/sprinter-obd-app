@@ -262,19 +262,24 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         fun thr(k: String) { val v = d(k) ?: return; val t = c.getJSONObject(k)
             a[k] = if (v >= t.getDouble("rood")) "rood" else if (v >= t.getDouble("oranje")) "oranje" else "ok" }
         thr("coolant"); thr("oil"); thr("iat"); thr("rpm")
+        val rpm = d("rpm") ?: 0.0
+        if (rpm > 500) { if (engineOn == 0L) engineOn = System.currentTimeMillis() } else engineOn = 0
+        val runningMs = if (engineOn == 0L) 0L else System.currentTimeMillis() - engineOn
         val k = c.getJSONObject("coolant_koud"); val cool = d("coolant")
         if (cool != null && (d("runtime") ?: 0.0) > k.getDouble("na_s") && (d("speed") ?: 0.0) > 0 && cool < k.getDouble("onder")) {
             a["coolant"] = "oranje"; a["coolant_reden"] = "Te koud na lang rijden: thermostaat?"
         }
+        // Turbo- en raildrukafwijking pas beoordelen als de motor ≥10 s draait: met contact aan en motor uit
+        // vraagt de ECU al raildruk terwijl de pomp stilstaat (gaf vals rood alarm, gemeld 2026-11-08).
         for (key in listOf("boost_dev", "rail_dev")) {
-            val v = d(key) ?: continue; val t = c.getJSONObject(key); val du = t.getDouble("duur_s")
+            val v = d(key)
+            if (v == null || runningMs < 10_000) { since.remove(key + "_r"); since.remove(key + "_o"); continue }
+            val t = c.getJSONObject(key); val du = t.getDouble("duur_s")
             a[key] = if (dur(key + "_r", v >= t.getDouble("rood"), du)) "rood" else if (dur(key + "_o", v >= t.getDouble("oranje"), du)) "oranje" else "ok"
         }
-        val rpm = d("rpm") ?: 0.0
         // Accuspanning pas 30 s na de start beoordelen (Mercedes laadt pas na enkele seconden; getest 2026-11-08).
-        if (rpm > 500) { if (engineOn == 0L) engineOn = System.currentTimeMillis() } else engineOn = 0
         val u = d("voltage"); val t = c.getJSONObject("voltage")
-        if (u != null && rpm > 500 && System.currentTimeMillis() - engineOn > 30_000)
+        if (u != null && rpm > 500 && runningMs > 30_000)
             a["voltage"] = if (u <= t.getDouble("laag_rood") || u >= t.getDouble("hoog_rood")) "rood"
             else if (u <= t.getDouble("laag_oranje") || u >= t.getDouble("hoog_oranje")) "oranje" else "ok"
         else if (u != null) a["voltage"] = "ok"
@@ -295,10 +300,12 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private fun update(nv: Map<String, Any>) {
         val now = System.currentTimeMillis()
         for ((k, v) in nv) { values[k] = v; updated[k] = now }
+        // Afwijkingen alleen met draaiende motor (anders zijn ze betekenisloos, zie evaluateAlarms)
+        val running = (d("rpm") ?: 0.0) > 500
         val bc = d("boost_cmd"); val ba = d("boost_act")
-        if (bc != null && ba != null) values["boost_dev"] = ((bc - ba) * 10).roundToInt() / 10.0
+        if (running && bc != null && ba != null) values["boost_dev"] = ((bc - ba) * 10).roundToInt() / 10.0 else values.remove("boost_dev")
         val rc = d("rail_cmd"); val ra = d("rail_act")
-        if (rc != null && rc > 200 && ra != null) values["rail_dev"] = (abs(rc - ra) / rc * 1000).roundToInt() / 10.0
+        if (running && rc != null && rc > 200 && ra != null) values["rail_dev"] = (abs(rc - ra) / rc * 1000).roundToInt() / 10.0 else values.remove("rail_dev")
         val maf = d("maf"); val lam = d("lambda"); val load = d("load")
         if (maf != null && lam != null && load != null) {
             // λ ≤ 1,05 bestaat niet bij een diesel: sonde koud/niet actief -> rekenen met 2,0 (bovengrens; tank-kalibratie corrigeert)
