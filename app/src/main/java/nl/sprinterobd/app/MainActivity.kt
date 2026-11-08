@@ -86,7 +86,7 @@ class MainActivity : Activity() {
     private fun openSocket(address: String): BluetoothSocket {
         val bm = getSystemService(BluetoothManager::class.java)
         val dev = bm.adapter.getRemoteDevice(address)
-        bm.adapter.cancelDiscovery()
+        // Geen cancelDiscovery(): vereist BLUETOOTH_SCAN en wij scannen nooit (alleen gekoppelde apparaten).
         return try {
             dev.createRfcommSocketToServiceRecord(SPP).also { it.connect() }
         } catch (e: Exception) {
