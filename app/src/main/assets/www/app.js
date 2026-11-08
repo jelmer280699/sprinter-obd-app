@@ -95,6 +95,7 @@
 
   // ---------------- alarmen ----------------
   const since = {};
+  let engineOn = 0;
   function dur(key, cond, need) {
     const now = Date.now();
     if (!cond) { delete since[key]; return false; }
@@ -114,8 +115,11 @@
       if (val == null) continue;
       a[key] = dur(key + "_r", val >= t.rood, t.duur_s) ? "rood" : dur(key + "_o", val >= t.oranje, t.duur_s) ? "oranje" : "ok";
     }
+    // Accuspanning pas beoordelen 30 s na de start: Mercedes laat de dynamo pas na een paar seconden laden
+    // (getest 2026-11-08: 12,1 V in de eerste ~10 s na starten gaf vals rood alarm).
+    if ((v.rpm || 0) > 500) { if (!engineOn) engineOn = Date.now(); } else engineOn = 0;
     const u = v.voltage, t = c.voltage;
-    if (u != null && (v.rpm || 0) > 500)
+    if (u != null && (v.rpm || 0) > 500 && Date.now() - engineOn > 30000)
       a.voltage = (u <= t.laag_rood || u >= t.hoog_rood) ? "rood" : (u <= t.laag_oranje || u >= t.hoog_oranje) ? "oranje" : "ok";
     else if (u != null) a.voltage = "ok";
     if (v.load != null) a.load = dur("load", v.load >= c.load.oranje, c.load.duur_s) ? "oranje" : "ok";
@@ -144,7 +148,11 @@
     if ((v.rail_cmd || 0) > 200 && v.rail_act != null) v.rail_dev = Math.round(Math.abs(v.rail_cmd - v.rail_act) / v.rail_cmd * 1000) / 10;
     // Verbruiksschatting [schatting]: MAF / (14,5 x lambda); lambda afgekapt op 2,0 -> bovengrens bij lage last.
     if (v.maf != null && v.lambda && v.load != null) {
-      const raw = v.load < 1 ? 0 : v.maf / (DIESEL_AFR * Math.min(v.lambda, 2)) / DIESEL_KG_L * 3.6;
+      // λ ≤ 1,05 komt bij een diesel niet voor: sonde nog koud/niet actief (getest: vast 1,02 bij koude start).
+      // Dan rekenen met 2,0, net als bij de afgekapte waarde (bovengrens; tank-kalibratie corrigeert).
+      const lam = v.lambda <= 1.05 ? 2 : Math.min(v.lambda, 2);
+      v.lambda_actief = v.lambda > 1.05;
+      const raw = v.load < 1 ? 0 : v.maf / (DIESEL_AFR * lam) / DIESEL_KG_L * 3.6;
       v.fuel_raw_lph = raw;
       v.fuel_lph = Math.round(raw * (S.tank.factor || 1) * 100) / 100;
       const spd = v.speed || 0;
