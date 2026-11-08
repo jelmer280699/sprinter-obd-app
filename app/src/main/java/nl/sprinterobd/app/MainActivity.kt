@@ -89,14 +89,19 @@ class MainActivity : Activity() {
 
     // Meldt wanneer Android zelf de Bluetooth-link (ACL) als verbonden/verbroken ziet.
     private val aclReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
         override fun onReceive(ctx: Context, intent: Intent) {
+            val dev: BluetoothDevice? = if (android.os.Build.VERSION.SDK_INT >= 33)
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            val who = try { "${dev?.name} ${dev?.address}" } catch (_: Exception) { dev?.address ?: "?" }
             val what = when (intent.action) {
                 BluetoothDevice.ACTION_ACL_CONNECTED -> "ACL verbonden"
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> "ACL verbroken"
                 BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED -> "ACL verbreken aangevraagd"
                 else -> intent.action ?: "?"
             }
-            emit("onSerialState", "android", what)
+            emit("onSerialState", "android", "$what: $who")
         }
     }
 
@@ -117,6 +122,8 @@ class MainActivity : Activity() {
     }
 
     @SuppressLint("MissingPermission")
+    @Volatile private var pauseMs: Long = 2000
+
     private fun openSocket(address: String, method: String): BluetoothSocket {
         val bm = getSystemService(BluetoothManager::class.java)
         val dev = bm.adapter.getRemoteDevice(address)
@@ -140,7 +147,7 @@ class MainActivity : Activity() {
                     last = e
                     emit("onSerialState", "poging", "mislukt: $method poging $i: ${e.message}")
                     try { s?.close() } catch (_: Exception) {}
-                    Thread.sleep(2000)
+                    Thread.sleep(pauseMs)
                 }
             }
             throw last ?: Exception("Verbinden mislukt")
@@ -218,6 +225,9 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun connect(address: String) = connectWith(address, "auto")
+
+        @JavascriptInterface
+        fun setPause(ms: Int) { pauseMs = ms.toLong().coerceIn(500, 30000) }
 
         @JavascriptInterface
         fun connectWith(address: String, method: String) {
