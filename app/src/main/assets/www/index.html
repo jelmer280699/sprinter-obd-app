@@ -119,9 +119,14 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 </section>
 
 <section id="set">
-  <div class="card"><h3>Verbinding</h3>
+  <div class="card" id="battery" style="display:none;border-color:var(--warn)"><h3>Batterijbeperking staat aan</h3>
+    <p>Samsung kan de meting op de achtergrond stilleggen. Zet de batterij voor Sprinter OBD op <b>Onbeperkt</b>.</p>
+    <button class="btn" id="batBtn">Batterijbeperking uitzetten</button></div>
+  <div class="card"><h3>Meting</h3>
+    <p class="dim">De meting draait als achtergronddienst (vaste melding in de statusbalk) en gaat door met scherm uit of in een andere app.
+    Ritten starten en stoppen automatisch. De dienst stopt zichzelf als de auto 15 minuten niet antwoordt.</p>
     <select id="dev" style="width:100%;margin-bottom:10px"></select>
-    <div class="row"><button class="btn" id="connBtn">Verbinden</button><button class="btn ghost" id="stopBtn">Loskoppelen</button></div>
+    <div class="row"><button class="btn" id="connBtn">Meting starten</button><button class="btn ghost" id="stopBtn">Meting stoppen</button></div>
     <p class="dim" id="connInfo"></p></div>
   <div class="card"><h3>Logbestanden</h3>
     <p class="dim">Ritlogs (1 regel/s) en DID-onderzoek staan in de app. Exporteren zet een kopie in <b>Downloads/SprinterOBD</b>.</p>
@@ -144,13 +149,9 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
   <div class="row"><button class="btn danger" id="mYes"></button><button class="btn ghost" id="mNo">Annuleren</button></div>
   <p id="mMsg" class="dim"></p></div></div>
 
-<script>/* Alleen buiten de app (browser-test): nep-dongle laden. In de app bestaat window.Native altijd. */
+<script>/* Alleen buiten de app (browser-test): nep-dienst laden. In de app bestaat window.Native altijd. */
 if(!window.Native)document.write('<script src="mock.js"><\/script>')</script>
-<script src="elm.js"></script>
-<script src="pids.js"></script>
-<script src="dtc.js"></script>
 <script src="health.js"></script>
-<script src="dids.js"></script>
 <script src="app.js"></script>
 <script>
 const $=s=>document.querySelector(s), S=APP.S;
@@ -191,13 +192,13 @@ function beep(){try{audio=audio||new AudioContext();const o=audio.createOscillat
 document.body.addEventListener("click",()=>{try{audio=audio||new AudioContext();audio.resume()}catch(e){}},{once:true});
 
 function tick(){
-  const c=S.conn,v=S.values,al=S.alarms,now=Date.now();
-  $("#cdot").style.background=c.status==="verbonden"?"var(--ok)":c.status==="verbinden"?"var(--warn)":"var(--bad)";
-  $("#ctxt").textContent=c.status+(c.status!=="verbonden"&&c.error?` · ${c.error}`:"");
+  const c=S.conn,v=S.values,al=S.alarms;
+  $("#cdot").style.background=c.status==="verbonden"?"var(--ok)":c.status==="verbinden"||c.status==="opstarten"?"var(--warn)":"var(--bad)";
+  $("#ctxt").textContent=(c.status==="verbonden"?(S.tripActive?"rit loopt":"verbonden · motor uit"):c.status)+(c.status!=="verbonden"&&c.error?` · ${c.error}`:"");
   const red=new Set();
   for(const [k,lbl,u,d] of TILES){
     const el=$("#t_"+k),a=al[ALARMKEY[k]]||al[k];
-    const age=(now-(S.updated[k==="fuel"?"maf":k]||0))/1000;
+    const age=S.age[k==="fuel"?"maf":k]??99;
     el.className="tile "+(["ok","oranje","rood"].includes(a)?a:"")+(age>15&&k!=="mil"?" stale":"");
     if(a==="rood")red.add(lbl);
     let val=fmt(v[k],d),unit=u,sub="";
@@ -217,8 +218,8 @@ function tick(){
   const m06=(S.healthEval.mode06||[]).filter(m=>m.status!=="ok").map(m=>`Mode 06: ${m.naam}`);
   const b2=[...S.dtcAlert.map(a=>`Nieuwe ${a.soort} foutcode ${a.code}`),...ond,...m06];
   $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?"🔧 "+b2.join(" · ")+" — tik voor details":"";
-  $("#logline").textContent=(S.logfile?`Log: ${S.logfile}`:"")+(c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+
-    (c.sessies?` · sessies ${c.sessies}, onderbrekingen ${c.onderbrekingen}`:"");
+  $("#logline").textContent=(S.tripActive?`Rit loopt · log: ${S.logfile}`:"Geen rit actief: start automatisch zodra de motor draait")+
+    (c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+(c.sessies?` · verbindingen ${c.sessies}, onderbrekingen ${c.onderbrekingen}`:"");
   if($("#rit").classList.contains("on"))renderTrip();
 }
 $("#banner2").onclick=()=>document.querySelector('nav button[data-s="gz"]').click();
@@ -230,6 +231,7 @@ const SERIES={c1:[["coolant","#ff9f1a","koelvloeistof"],["oil","#ff3b30","olie"]
  c4:[["rpm","#2ecc71","toerental"],["load40","#ff9f1a","belasting"]]};
 function drawCharts(){
   if(!$("#gr").classList.contains("on"))return;
+  APP.pollHistory();
   const h=S.history.map(p=>({...p,load40:p.load==null?null:p.load*40}));
   for(const id in SERIES){
     const cv=$("#"+id),r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
@@ -288,6 +290,7 @@ $("#clearBtn").onclick=async()=>{
 
 // ---------- rit ----------
 function renderTrip(){
+  if(!S.trip){$("#trip").innerHTML='<div class="card" style="grid-column:1/-1">Geen rit actief. Een rit start automatisch zodra de motor draait en stopt als de motor 5 minuten uit staat.</div>';return}
   const t=S.trip,m=t.max;
   const rit=[["Afstand",fmt(t.afstand_km,1),"km"],["Brandstof [sch.]",fmt(t.brandstof_l,1),"L"],
    ["Gem. verbruik [sch.]",t.afstand_km>1?fmt(t.brandstof_l/t.afstand_km*100,1):"–","L/100"],["Alarmen or./rood",`${t.alarmen.oranje}/${t.alarmen.rood}`,""],
@@ -298,7 +301,7 @@ function renderTrip(){
 }
 function loadRitten(){
   renderTrip();
-  const ritten=APP.store.get("ritten",[]).filter(r=>r._start!==S.trip.start);ritten.push({...APP.tripSummary(S.trip),huidig:true});
+  const ritten=APP.store.get("ritten",[]).filter(r=>!S.trip||r._start!==S.trip._start);if(S.trip)ritten.push({...S.trip,huidig:true});
   $("#ritten").innerHTML="<tr><th>Start</th><th>km</th><th>Rijtijd</th><th>Stat.</th><th>L</th><th>L/100</th><th>Max kv/olie/inl</th><th>Alarmen</th></tr>"+
    ritten.reverse().map(x=>`<tr${x.huidig?' style="color:var(--accent)"':""}><td>${x.start}${x.huidig?" (nu)":""}</td><td>${fmt(x.afstand_km,1)}</td><td>${hm(x.rijtijd_s)}</td><td>${hm(x.stationair_s)}</td>
    <td>${fmt(x.brandstof_l,1)}</td><td>${x.l100??"–"}</td><td>${x.max.coolant??"–"}/${x.max.oil??"–"}/${x.max.iat??"–"}</td>
@@ -308,13 +311,16 @@ function loadRitten(){
    (b.length?"<br>Laatste: "+b.slice(-5).reverse().map(x=>`${x.tijd}: ${x.liters} L${x.factor?` (×${x.factor})`:""}`).join(" · "):"");
 }
 $("#tripReset").onclick=async()=>{
-  if(!await ask("Nieuwe rit?","<p>De huidige rit wordt opgeslagen en een nieuwe rit gestart.</p>","Ja, nieuwe rit"))return;
-  closeModal();APP.tripReset();loadRitten()};
+  if(!await ask("Rit afsluiten?","<p>De huidige rit wordt opgeslagen. Draait de motor, dan start direct een nieuwe rit.</p>","Ja, afsluiten"))return;
+  closeModal();try{await APP.tripReset()}catch(e){}APP.poll();loadRitten()};
 $("#tankBtn").onclick=async()=>{
   const l=parseFloat($("#tankL").value.replace(",","."));
   if(!(l>=1&&l<=150)){$("#tankMsg").textContent="Vul een aantal liter tussen 1 en 150 in.";return}
   if(!await ask("Tankbeurt opslaan?",`<p>${l} liter, tank helemaal vol?</p>`,"Ja, opslaan"))return;
-  closeModal();const e=APP.addTankbeurt(l);$("#tankMsg").textContent=`Opgeslagen.${e.factor?` Factor deze tankbeurt ×${e.factor}.`:" Teller gestart."}`;$("#tankL").value="";loadRitten()};
+  closeModal();
+  try{const e=await APP.addTankbeurt(l);$("#tankMsg").textContent=`Opgeslagen.${e.factor?` Factor deze tankbeurt ×${e.factor}.`:" Teller gestart."}`}
+  catch(e){$("#tankMsg").textContent="Niet opgeslagen: "+e.message}
+  $("#tankL").value="";APP.poll();loadRitten()};
 
 // ---------- gezondheid ----------
 function loadHealth(){
@@ -336,11 +342,12 @@ function loadHealth(){
 
 // ---------- instellingen ----------
 const evlog=[];
-ELM.onState((s,m)=>{evlog.push(new Date().toLocaleTimeString("nl-NL")+"  "+s+" "+m);if(evlog.length>100)evlog.shift();
+APP.onEvent((s,m)=>{evlog.push(new Date().toLocaleTimeString("nl-NL")+"  "+s+" "+m);if(evlog.length>100)evlog.shift();
   if($("#set").classList.contains("on"))$("#evlog").textContent=evlog.join("\n")});
 function loadSettings(){
+  $("#battery").style.display=Native.batteryOk()?"none":"block";
   if(Native.hasPermission()){
-    const list=JSON.parse(Native.bondedDevices()),cur=APP.store.get("dev","66:1E:87:05:07:FA");
+    const list=JSON.parse(Native.bondedDevices()),cur=(APP.CFG.dev)||"66:1E:87:05:07:FA";
     $("#dev").innerHTML=list.map(d=>`<option value="${d.address}"${d.address===cur?" selected":""}>${esc(d.name)} (${d.address})</option>`).join("");
   }
   const c=S.conn.info||{};
@@ -348,7 +355,6 @@ function loadSettings(){
   $("#didOn").checked=APP.CFG.did_onderzoek;
   $("#cfgTxt").value=JSON.stringify(APP.CFG.alarms,null,1);
   $("#evlog").textContent=evlog.join("\n");
-  APP.flushLogs(true);
   const files=JSON.parse(Native.listFiles());
   $("#files").innerHTML=files.length?files.map(f=>`<tr><td>${esc(f.name)}<br><span class="dim">${(f.size/1024).toFixed(0)} kB · ${new Date(f.modified).toLocaleString("nl-NL")}</span></td>
     <td><button class="btn small" data-exp="${esc(f.name)}">Exporteren</button> <button class="btn small ghost" data-del="${esc(f.name)}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen logbestanden.</td></tr>';
@@ -359,13 +365,14 @@ $("#files").onclick=async e=>{
   if(d){if(!await ask("Logbestand verwijderen?",`<p>${esc(d)} wordt definitief verwijderd uit de app. Dit kan niet ongedaan worden gemaakt.</p>`,"Ja, verwijderen"))return;
     closeModal();Native.deleteFile(d);loadSettings()}
 };
-$("#dev").onchange=e=>APP.store.set("dev",e.target.value);
+$("#dev").onchange=e=>APP.setDevice(e.target.value);
 $("#connBtn").onclick=()=>{if(!Native.hasPermission()){Native.requestPermission();return}APP.run()};
 $("#stopBtn").onclick=()=>APP.stop();
-$("#didOn").onchange=e=>APP.setConfig?APP.setConfig({did_onderzoek:e.target.checked}):(APP.CFG.did_onderzoek=e.target.checked);
-$("#cfgSave").onclick=()=>{
-  try{const a=JSON.parse($("#cfgTxt").value);Object.assign(APP.CFG.alarms,a);APP.store.set("cfg",{did_onderzoek:APP.CFG.did_onderzoek,alarms:APP.CFG.alarms});$("#cfgMsg").textContent="Opgeslagen"}
-  catch(e){$("#cfgMsg").textContent="Fout in de tekst: "+e.message}};
+$("#batBtn").onclick=()=>Native.askBattery();
+$("#didOn").onchange=e=>APP.setConfig({did_onderzoek:e.target.checked});
+$("#cfgSave").onclick=async()=>{
+  try{const a=JSON.parse($("#cfgTxt").value);await APP.setConfig({alarms:a});$("#cfgMsg").textContent="Opgeslagen"}
+  catch(e){$("#cfgMsg").textContent="Niet opgeslagen: "+e.message}};
 $("#cfgReset").onclick=()=>{$("#cfgTxt").value=JSON.stringify(APP.DEFAULT_CFG.alarms,null,1);$("#cfgMsg").textContent="Standaardwaarden geladen; tik Opslaan om te bewaren."};
 $("#backupBtn").onclick=()=>{
   const data={gemaakt:new Date().toISOString(),ritten:APP.store.get("ritten",[]),health:APP.store.get("health",[]),mode06:APP.store.get("mode06",[]),
@@ -374,9 +381,9 @@ $("#backupBtn").onclick=()=>{
   $("#backupMsg").textContent=r.startsWith("fout")?r:"Opgeslagen in "+r};
 
 // ---------- start ----------
-ELM.onState(s=>{if(s==="permissie"&&Native.hasPermission())APP.run()});
+// De app start de meetdienst zelf bij openen (na toestemming). Hier alleen de laatst gekozen tab herstellen.
 try{const t=localStorage.getItem("tab");if(t)document.querySelector(`nav button[data-s="${t}"]`)?.click()}catch(e){}
-if(Native.hasPermission())APP.run();else S.conn.error="Bluetooth-toestemming nodig";
+if(!Native.hasPermission())S.conn.error="Bluetooth-toestemming nodig";
 </script>
 </body>
 </html>
