@@ -292,6 +292,35 @@ class MainActivity : Activity() {
             }
         }
 
+        private fun logDir() = java.io.File(filesDir, "logs").apply { mkdirs() }
+        private fun safe(name: String) = name.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+
+        /** Voeg tekst toe aan een logbestand in de app-opslag (ritlog, DID-onderzoek). */
+        @JavascriptInterface
+        fun appendFile(name: String, text: String): Boolean = try {
+            java.io.File(logDir(), safe(name)).appendText(text, Charsets.UTF_8); true
+        } catch (e: Exception) { false }
+
+        @JavascriptInterface
+        fun listFiles(): String {
+            val arr = JSONArray()
+            logDir().listFiles()?.sortedByDescending { it.lastModified() }?.forEach {
+                arr.put(JSONObject().put("name", it.name).put("size", it.length()).put("modified", it.lastModified()))
+            }
+            return arr.toString()
+        }
+
+        @JavascriptInterface
+        fun deleteFile(name: String): Boolean = java.io.File(logDir(), safe(name)).delete()
+
+        /** Kopieer een logbestand naar Downloads/SprinterOBD zodat je het kunt delen of op de laptop analyseren. */
+        @JavascriptInterface
+        fun exportFile(name: String): String {
+            val f = java.io.File(logDir(), safe(name))
+            if (!f.exists()) return "fout: bestand bestaat niet"
+            return saveFile(f.name, f.readText(Charsets.UTF_8))
+        }
+
         /** Sla een tekstbestand op in Downloads/SprinterOBD (geen extra machtiging nodig). */
         @JavascriptInterface
         fun saveFile(name: String, content: String): String {

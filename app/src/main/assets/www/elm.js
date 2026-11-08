@@ -15,7 +15,7 @@
   };
 
   const dbg = t => { if (window.ELM && ELM.debug) try { ELM.debug(t); } catch (e) {} };
-  function rawSend(cmd, ms) {
+  function rawSend(cmd, ms, sender) {
     return new Promise((resolve, reject) => {
       buf = "";
       waiter = { resolve, reject };
@@ -23,7 +23,7 @@
       const t = setTimeout(() => { if (waiter) { waiter = null; dbg("TIMEOUT " + cmd + " (ontvangen: " + JSON.stringify(buf) + ")"); reject(new Error("Timeout op " + cmd)); } }, ms);
       const wrap = f => v => { clearTimeout(t); if (typeof v === "string") dbg("RX " + v.replace(/[\r\n]+/g, " | ").replace(/>/g, "").trim()); f(v); };
       waiter.resolve = wrap(resolve); waiter.reject = wrap(reject);
-      if (!Native.write(cmd)) { clearTimeout(t); waiter = null; reject(new Error("Niet verzonden (geblokkeerd of niet verbonden): " + cmd)); }
+      if (!(sender ? sender() : Native.write(cmd))) { clearTimeout(t); waiter = null; reject(new Error("Niet verzonden (geblokkeerd of niet verbonden): " + cmd)); }
     });
   }
 
@@ -60,6 +60,25 @@
 
   async function query(cmd, ms) { return parseBytes(await send(cmd, ms)); }
 
+  // Mode 04 (codes wissen): via dezelfde wachtrij, verzonden door de aparte native functie met bevestiging.
+  function clearDtcs(confirm) {
+    if (confirm !== "WISSEN") return Promise.reject(new Error("Bevestiging ontbreekt"));
+    const p = chain.then(() => rawSend("04", 10000, () => Native.clearDtc("WISSEN")));
+    chain = p.catch(() => {});
+    return p.then(r => r.includes("44"));
+  }
+
+  // UDS 0x22 ReadDataByIdentifier (alleen lezen): {did: [databytes]} of null
+  async function readDid(did) {
+    const h = did.toString(16).toUpperCase().padStart(4, "0");
+    const d = parseBytes(await send("22" + h, 3000));
+    if (d && d.length >= 3 && d[0] === 0x62 && d[1] === (did >> 8) && d[2] === (did & 0xff)) return d.slice(3);
+    return null;
+  }
+
+  // Wachtrij leegmaken na verbindingsverlies (openstaande verzoeken laten falen)
+  function reset() { buf = ""; if (waiter) { const w = waiter; waiter = null; w.reject(new Error("verbinding opnieuw")); } chain = Promise.resolve(); }
+
   async function init(opts = {}) {
     // ATZ = volledige reset van de ELM-chip; ATD = alleen standaardinstellingen (geen herstart).
     if (opts.skipATZ) await send("ATD", 3000); else await send("ATZ", 4000);
@@ -79,5 +98,5 @@
     return { elm, proto };
   }
 
-  window.ELM = { send, query, parseBytes, init, onState: f => listeners.push(f) };
+  window.ELM = { send, query, parseBytes, init, clearDtcs, readDid, reset, onState: f => listeners.push(f) };
 })();

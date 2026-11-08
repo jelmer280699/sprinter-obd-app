@@ -6,125 +6,377 @@
 <title>Sprinter OBD</title>
 <style>
 :root{--bg:#0b0d10;--card:#151a20;--line:#252c35;--txt:#e8edf2;--dim:#8a96a3;--ok:#2ecc71;--warn:#ff9f1a;--bad:#ff3b30;--accent:#4aa3ff;color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,sans-serif;
- padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
-h1{font-size:22px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
-.dot{width:14px;height:14px;border-radius:50%;background:var(--dim)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.3 system-ui,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left))}
+.top{display:flex;align-items:center;gap:10px}
+.top h1{font-size:19px;margin:0}
+#conn{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:8px;color:var(--dim);text-align:right}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--dim);flex:none}
+nav{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:none;background:none;border:1px solid var(--line);color:var(--txt);font-size:16px;padding:9px 14px;border-radius:10px}
+nav button.on{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+main{padding:12px max(12px,env(safe-area-inset-right)) 24px max(12px,env(safe-area-inset-left))}
+section{display:none}section.on{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.tile{background:var(--card);border:3px solid var(--line);border-radius:16px;padding:10px 12px;min-height:112px}
+.tile .lbl{color:var(--dim);font-size:15px}
+.tile .val{font-size:42px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;margin-top:4px;white-space:nowrap}
+.tile .unit{font-size:16px;color:var(--dim);font-weight:400;margin-left:3px}
+.tile .sub{font-size:13px;color:var(--dim);margin-top:2px}
+.tile.ok{border-color:var(--ok)}.tile.ok .val{color:var(--ok)}
+.tile.oranje{border-color:var(--warn)}.tile.oranje .val{color:var(--warn)}
+.tile.rood{border-color:var(--bad);background:#2a0f0d}.tile.rood .val{color:var(--bad)}
+.tile.stale .val{opacity:.35}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:10px}
+.chart h3{margin:2px 6px 6px;font-size:16px}
+.chart canvas{width:100%;height:190px;display:block}
+.legend span{display:inline-block;margin:0 8px 0 6px;font-size:13px;color:var(--dim)}
+.legend i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
-select,button{font-size:18px;padding:13px;border-radius:12px;width:100%}
-select{background:#0b0d10;color:var(--txt);border:1px solid var(--line);margin-bottom:10px}
-button{border:0;background:var(--accent);color:#000;font-weight:700}
-button.ghost{background:none;border:1px solid var(--line);color:var(--txt);margin-top:8px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.tile{background:var(--card);border:3px solid var(--line);border-radius:16px;padding:12px}
-.lbl{color:var(--dim);font-size:15px}
-.val{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
-.unit{font-size:18px;color:var(--dim);font-weight:400;margin-left:4px}
-pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:40vh;overflow:auto;color:var(--dim)}
+.card h3{margin:0 0 8px;font-size:17px}
+.btn{font-size:17px;padding:12px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:600}
+.btn.danger{background:var(--bad);color:#fff}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--txt)}
+.btn.small{font-size:14px;padding:7px 10px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}td,th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:15px}
+th{color:var(--dim);font-weight:500;font-size:13px}
+.code{font-weight:700;font-size:19px;color:var(--warn)}
+.tag{display:inline-block;padding:2px 9px;border-radius:8px;font-size:13px;white-space:nowrap}
+.tag.ok{background:#12351f;color:var(--ok)}.tag.no{background:#3a2a0d;color:var(--warn)}.tag.bad{background:#3a0f0d;color:var(--bad)}
+.dim{color:var(--dim)}.big{font-size:20px}
+#banner{display:none;background:var(--bad);color:#fff;font-size:19px;font-weight:700;padding:10px 12px;text-align:center}
+#banner2{display:none;background:#3a2a0d;color:var(--warn);font-size:16px;font-weight:600;padding:9px 12px;text-align:center;border-bottom:2px solid var(--warn)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
+.bar i{display:block;height:100%;background:var(--accent)}
+input,select,textarea{font-size:17px;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0b0d10;color:var(--txt)}
+textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal.on{display:flex}
+.modal .box{background:var(--card);border:2px solid var(--bad);border-radius:16px;padding:18px;max-width:520px;width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:45vh;overflow:auto;color:var(--dim)}
 </style>
 </head>
 <body>
-<h1><span class="dot" id="dot"></span>Sprinter OBD <span style="font-size:13px;color:var(--dim);font-weight:400">testversie</span></h1>
-<div class="card">
-  <select id="dev"></select>
-  <select id="method">
-    <option value="secure">Methode: beveiligd SPP (alleen deze, max 3x)</option>
-    <option value="insecure">Methode: onbeveiligd SPP (alleen deze, max 3x)</option>
-    <option value="channel1">Methode: kanaal 1 (alleen deze, max 3x)</option>
-    <option value="auto">Methode: automatisch (alle varianten)</option>
-  </select>
-  <select id="pause">
-    <option value="2000">Pauze tussen pogingen: 2 s</option>
-    <option value="5000">Pauze tussen pogingen: 5 s</option>
-    <option value="10000" selected>Pauze tussen pogingen: 10 s</option>
-  </select>
-  <label style="display:flex;gap:10px;align-items:center;margin:0 0 10px"><input type="checkbox" id="noatz" checked style="width:22px;height:22px"> ATZ overslaan (geen chip-reset)</label>
-  <button id="go">Verbinden</button>
-  <button class="ghost" id="stop">Loskoppelen</button>
-</div>
-<div class="grid">
-  <div class="tile"><div class="lbl">Toerental</div><div class="val" id="rpm">–</div></div>
-  <div class="tile"><div class="lbl">Koelvloeistof</div><div class="val" id="cool">–<span class="unit">°C</span></div></div>
-  <div class="tile"><div class="lbl">Accu (ECU)</div><div class="val" id="volt">–<span class="unit">V</span></div></div>
-  <div class="tile"><div class="lbl">Metingen/s</div><div class="val" id="rate">–</div></div>
-  <div class="tile"><div class="lbl">Huidige sessie</div><div class="val" id="sess">–<span class="unit">s</span></div></div>
-  <div class="tile"><div class="lbl">Onderbrekingen</div><div class="val" id="drops">0</div></div>
-</div>
-<div class="card" style="margin-top:12px"><div class="lbl">Sessieduur per verbinding (s)</div><div id="hist" style="font-variant-numeric:tabular-nums">–</div></div>
-<div class="card" style="margin-top:12px"><pre id="log"></pre></div>
+<div id="banner"></div>
+<div id="banner2"></div>
+<header>
+  <div class="top"><h1>Sprinter OM651</h1>
+    <div id="conn"><span id="ctxt">opstarten…</span><span class="dot" id="cdot"></span></div></div>
+  <nav>
+    <button data-s="ov" class="on">Overzicht</button>
+    <button data-s="gr">Grafieken</button>
+    <button data-s="dtc">Foutcodes</button>
+    <button data-s="rit">Rit</button>
+    <button data-s="gz">Gezondheid</button>
+    <button data-s="set">Instellingen</button>
+  </nav>
+</header>
+<main>
+<section id="ov" class="on"><div class="grid" id="tiles"></div><p class="dim" id="logline" style="font-size:13px"></p></section>
+
+<section id="gr">
+  <div class="chart"><h3>Temperaturen (°C)</h3><canvas id="c1"></canvas><div class="legend" id="l1"></div></div>
+  <div class="chart"><h3>Turbodruk (kPa abs)</h3><canvas id="c2"></canvas><div class="legend" id="l2"></div></div>
+  <div class="chart"><h3>Raildruk (bar)</h3><canvas id="c3"></canvas><div class="legend" id="l3"></div></div>
+  <div class="chart"><h3>Toerental (rpm) en belasting (% ×40)</h3><canvas id="c4"></canvas><div class="legend" id="l4"></div></div>
+  <p class="dim">Laatste 15 minuten, 1 punt per seconde.</p>
+</section>
+
+<section id="dtc">
+  <div class="card"><button class="btn" id="readDtc">Foutcodes uitlezen</button> <span class="dim" id="dtcStatus"></span></div>
+  <div id="dtcOut"></div>
+  <div class="card"><h3>Mode 06 – testresultaten van de ECU</h3>
+    <p class="dim">De ECU test zichzelf tijdens het rijden. Waarden zijn ruw; de grenzen staan in dezelfde schaal.</p>
+    <button class="btn ghost" id="m06Btn">Mode 06 uitlezen</button> <span id="m06Msg" class="dim"></span>
+    <div id="m06Out" class="scroll" style="margin-top:10px"></div></div>
+  <div class="card"><h3>Foutcodes wissen</h3>
+    <p class="dim">Alleen als de oorzaak is opgelost. Motor uit, contact aan.</p>
+    <button class="btn danger" id="clearBtn">Foutcodes wissen…</button></div>
+</section>
+
+<section id="rit">
+  <div class="grid" id="trip"></div>
+  <p><button class="btn ghost" id="tripReset">Rit afsluiten en nieuwe starten</button></p>
+  <div class="card"><h3>Tankbeurt (kalibratie verbruik)</h3>
+    <p class="dim">Tank altijd <b>helemaal vol</b> en vul in hoeveel liter erin ging. De eerste keer start alleen de teller.</p>
+    <div class="row"><input id="tankL" inputmode="decimal" placeholder="liters" style="width:130px"><button class="btn" id="tankBtn">Opslaan</button></div>
+    <p id="tankMsg" class="dim"></p><div id="tankInfo" class="dim"></div></div>
+  <div class="card"><h3>Ritten</h3><div class="scroll"><table id="ritten"></table></div></div>
+</section>
+
+<section id="gz">
+  <div class="card">Per rit worden kengetallen gemeten onder vergelijkbare omstandigheden en vergeleken met <b>de eigen basislijn van deze bus</b> (vanaf 5 ritten). Dit geeft <b>signalen, geen diagnose</b>.
+    <div class="dim" id="gzInfo" style="margin-top:6px"></div></div>
+  <div id="gzDtc"></div>
+  <div class="card"><h3>Kengetallen</h3><div class="scroll"><table id="gzTab"></table></div></div>
+  <div class="card"><h3>Mode 06-marges</h3><p class="dim">Elke rit automatisch na 20 min motorlooptijd. Oranje = marge meer dan gehalveerd sinds de eerste meting.</p>
+    <div class="scroll"><table id="gzM06"></table></div></div>
+  <div class="card"><h3>Logboek</h3><table id="gzEv"></table></div>
+</section>
+
+<section id="set">
+  <div class="card"><h3>Verbinding</h3>
+    <select id="dev" style="width:100%;margin-bottom:10px"></select>
+    <div class="row"><button class="btn" id="connBtn">Verbinden</button><button class="btn ghost" id="stopBtn">Loskoppelen</button></div>
+    <p class="dim" id="connInfo"></p></div>
+  <div class="card"><h3>Logbestanden</h3>
+    <p class="dim">Ritlogs (1 regel/s) en DID-onderzoek staan in de app. Exporteren zet een kopie in <b>Downloads/SprinterOBD</b>.</p>
+    <div class="scroll"><table id="files"></table></div></div>
+  <div class="card"><h3>DID-onderzoek (Mercedes Mode 22)</h3>
+    <label class="row"><input type="checkbox" id="didOn" style="width:22px;height:22px"> Tijdens het rijden telkens één van de 108 live-DID's meelezen en loggen</label></div>
+  <div class="card"><h3>Alarmgrenzen</h3>
+    <textarea id="cfgTxt" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn" id="cfgSave">Opslaan</button><button class="btn ghost" id="cfgReset">Standaardwaarden</button><span class="dim" id="cfgMsg"></span></div></div>
+  <div class="card"><h3>Gebeurtenissen verbinding</h3><pre id="evlog"></pre></div>
+  <div class="card"><h3>Gegevens exporteren</h3>
+    <p class="dim">Ritten, gezondheid, Mode 06-historie en tankbeurten als één JSON-bestand in Downloads/SprinterOBD (back-up).</p>
+    <button class="btn ghost" id="backupBtn">Back-up maken</button> <span class="dim" id="backupMsg"></span></div>
+</section>
+</main>
+
+<div class="modal" id="modal"><div class="box">
+  <h2 id="mTitle" style="margin-top:0;color:var(--bad)"></h2><div id="mBody"></div>
+  <p id="mChkRow"><label class="row"><input type="checkbox" id="mChk" style="width:22px;height:22px"> Ik begrijp dit</label></p>
+  <div class="row"><button class="btn danger" id="mYes"></button><button class="btn ghost" id="mNo">Annuleren</button></div>
+  <p id="mMsg" class="dim"></p></div></div>
+
+<script>/* Alleen buiten de app (browser-test): nep-dongle laden. In de app bestaat window.Native altijd. */
+if(!window.Native)document.write('<script src="mock.js"><\/script>')</script>
 <script src="elm.js"></script>
+<script src="pids.js"></script>
+<script src="dtc.js"></script>
+<script src="health.js"></script>
+<script src="dids.js"></script>
+<script src="app.js"></script>
 <script>
-const $=s=>document.querySelector(s);
-const log=t=>{const p=$("#log");p.textContent+=new Date().toLocaleTimeString("nl-NL")+"  "+t+"\n";p.scrollTop=1e9};
-let running=false;
-const dot=c=>$("#dot").style.background=c;
+const $=s=>document.querySelector(s), S=APP.S;
+const fmt=(v,d)=>v==null||Number.isNaN(v)?"–":Number(v).toFixed(d);
+const hm=x=>{x=Math.round(x||0);return `${Math.floor(x/3600)}:${String(Math.floor(x%3600/60)).padStart(2,"0")}`};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">let op</span>',rood:'<span class="tag bad">controleren</span>',
+ basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
-function loadDevices(){
-  if(!Native.hasPermission()){log("Geen Bluetooth-toestemming: tik Verbinden om te vragen.");return}
-  const list=JSON.parse(Native.bondedDevices());
-  let saved=null;try{saved=localStorage.getItem("dev")}catch(e){}
-  $("#dev").innerHTML=list.map(d=>`<option value="${d.address}">${d.name} (${d.address})</option>`).join("");
-  const pick=list.find(d=>d.address===saved)||list.find(d=>/veepeak|obd|elm/i.test(d.name));
-  if(pick)$("#dev").value=pick.address;
-  log(`${list.length} gekoppelde apparaten`+(pick?`, gekozen: ${pick.name}`:""));
+// ---------- tabs ----------
+const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts};
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button,section").forEach(e=>e.classList.remove("on"));
+  b.classList.add("on");$("#"+b.dataset.s).classList.add("on");loaders[b.dataset.s]?.();
+  try{localStorage.setItem("tab",b.dataset.s)}catch(e){}});
+
+// ---------- modaal venster (vervangt confirm/alert) ----------
+function ask(title,body,yes,{check=false}={}){
+  return new Promise(res=>{
+    $("#mTitle").textContent=title;$("#mBody").innerHTML=body;$("#mYes").textContent=yes;$("#mMsg").textContent="";
+    $("#mChkRow").style.display=check?"block":"none";$("#mChk").checked=false;$("#mYes").disabled=check;
+    $("#modal").classList.add("on");
+    $("#mChk").onchange=e=>$("#mYes").disabled=!e.target.checked;
+    $("#mYes").onclick=()=>res(true);$("#mNo").onclick=()=>{$("#modal").classList.remove("on");res(false)};
+  });
 }
-window.addEventListener("load",loadDevices);
-let want=false,waitState=null,sessStart=0,drops=0;const durs=[];
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-ELM.onState((s,m)=>{
-  if(s==="android"&&!/66:1E:87:05:07:FA/i.test(m))return;  // alleen meldingen over de VEEPEAK
-  log(`status: ${s} ${m}`);
-  if(s==="permissie")loadDevices();
-  if(waitState&&(s==="verbonden"||s==="fout")){const w=waitState;waitState=null;w(s==="verbonden")}
-  if(s==="verbroken"||s==="fout"){running=false;dot("var(--bad)");
-    if(sessStart){durs.push(Math.round((Date.now()-sessStart)/1000));sessStart=0;drops++;
-      $("#drops").textContent=drops;$("#hist").textContent=durs.join(" · ")}}
-});
-setInterval(()=>{if(sessStart)$("#sess").innerHTML=Math.round((Date.now()-sessStart)/1000)+'<span class="unit">s</span>'},500);
+const closeModal=()=>$("#modal").classList.remove("on");
 
-async function session(first){
-  const addr=$("#dev").value,pause=+$("#pause").value;
-  Native.setPause(pause);
-  dot("var(--warn)");log(`Verbinden met ${addr} (${$("#method").value}, pauze ${pause/1000} s)…`);
-  dbgN=0;
-  const ok=await new Promise(res=>{waitState=res;Native.connectWith(addr,$("#method").value)});
-  if(!ok)return;
-  sessStart=Date.now();
-  try{
-    const i=await ELM.init({skipATZ:!first||$("#noatz").checked});log(`ELM: ${i.elm} · ${i.proto}`);
-    if(first){const vin=await ELM.query("0902",5000);if(vin)log("VIN: "+String.fromCharCode(...vin.slice(3).filter(b=>b>32&&b<127)))}
-    dot("var(--ok)");running=true;let n=0,t0=Date.now();
-    while(running){
-      const b=await ELM.query("010C0542",3000);n++;
-      if(b&&b[0]===0x41){
-        for(let k=1;k<b.length;){const pid=b[k++];
-          if(pid===0x0C){$("#rpm").textContent=Math.round((b[k]*256+b[k+1])/4);k+=2}
-          else if(pid===0x05){$("#cool").innerHTML=(b[k]-40)+'<span class="unit">°C</span>';k+=1}
-          else if(pid===0x42){$("#volt").innerHTML=((b[k]*256+b[k+1])/1000).toFixed(2)+'<span class="unit">V</span>';k+=2}
-          else break}
-      }
-      if(Date.now()-t0>3000){$("#rate").textContent=(n/((Date.now()-t0)/1000)).toFixed(1);n=0;t0=Date.now()}
-    }
-  }catch(e){log("FOUT: "+e.message);dot("var(--bad)")}
-}
+// ---------- overzicht ----------
+const TILES=[["coolant","Koelvloeistof","°C",0],["oil","Motorolie","°C",0],["iat","Inlaatlucht","°C",0],
+ ["boost_act","Turbodruk","kPa",0],["rail_act","Raildruk","bar",0],["voltage","Accuspanning","V",2],
+ ["load","Belasting","%",0],["rpm","Toerental","rpm",0],["speed","Snelheid","km/u",0],
+ ["fuel","Verbruik [schatting]","",1],["ambient","Buiten","°C",0],["maf","Luchtmassa","g/s",1],["mil","Motorlampje","",0]];
+const ALARMKEY={boost_act:"boost_dev",rail_act:"rail_dev"};
+$("#tiles").innerHTML=TILES.map(t=>`<div class="tile" id="t_${t[0]}"><div class="lbl">${t[1]}</div><div class="val">–</div><div class="sub"></div></div>`).join("");
+let audio,lastRed=new Set();
+function beep(){try{audio=audio||new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;o.connect(g);g.connect(audio.destination);g.gain.value=.25;o.start();o.stop(audio.currentTime+.4)}catch(e){}}
+document.body.addEventListener("click",()=>{try{audio=audio||new AudioContext();audio.resume()}catch(e){}},{once:true});
 
-$("#go").onclick=async()=>{
-  if(!Native.hasPermission()){Native.requestPermission();return}
-  if(!$("#dev").value||want)return;
-  try{localStorage.setItem("dev",$("#dev").value)}catch(e){}
-  want=true;drops=0;durs.length=0;$("#drops").textContent=0;$("#hist").textContent="–";
-  let first=true;
-  // Blijf verbinden zolang de gebruiker niet op Loskoppelen tikt; na een onderbreking eerst de pauze afwachten.
-  while(want){
-    await session(first);first=false;
-    if(!want)break;
-    const p=+$("#pause").value;log(`Opnieuw verbinden over ${p/1000} s…`);await sleep(p);
+function tick(){
+  const c=S.conn,v=S.values,al=S.alarms,now=Date.now();
+  $("#cdot").style.background=c.status==="verbonden"?"var(--ok)":c.status==="verbinden"?"var(--warn)":"var(--bad)";
+  $("#ctxt").textContent=c.status+(c.status!=="verbonden"&&c.error?` · ${c.error}`:"");
+  const red=new Set();
+  for(const [k,lbl,u,d] of TILES){
+    const el=$("#t_"+k),a=al[ALARMKEY[k]]||al[k];
+    const age=(now-(S.updated[k==="fuel"?"maf":k]||0))/1000;
+    el.className="tile "+(["ok","oranje","rood"].includes(a)?a:"")+(age>15&&k!=="mil"?" stale":"");
+    if(a==="rood")red.add(lbl);
+    let val=fmt(v[k],d),unit=u,sub="";
+    if(k==="mil"){val=v.mil==null?"–":v.mil?"AAN":"uit";if(v.dtc_count!=null)sub=`${v.dtc_count} code(s)`}
+    if(k==="fuel"){if(v.l100!=null){val=fmt(v.l100,1);unit="L/100";sub=`${fmt(v.fuel_lph,1)} L/u`}else{val=fmt(v.fuel_lph,1);unit="L/u";sub="stilstand"}
+      if(S.tank.factor&&S.tank.factor!==1)sub+=` · ×${S.tank.factor}`}
+    if(k==="boost_act"&&v.boost_cmd!=null)sub=`gevr. ${fmt(v.boost_cmd,0)} · Δ ${fmt(v.boost_dev,0)}`;
+    if(k==="rail_act"&&v.rail_cmd!=null)sub=`gevr. ${fmt(v.rail_cmd,0)} · ${fmt(v.rail_dev,0)} %`;
+    if(k==="coolant"&&al.coolant_reden)sub=al.coolant_reden;
+    if(k==="voltage"&&(v.rpm||0)<=500)sub="motor uit: geen alarm";
+    el.querySelector(".val").innerHTML=`${val}<span class="unit">${unit}</span>`;
+    el.querySelector(".sub").textContent=sub;
   }
+  if([...red].some(x=>!lastRed.has(x)))beep();lastRed=red;
+  $("#banner").style.display=red.size?"block":"none";$("#banner").textContent=red.size?"ALARM: "+[...red].join(", "):"";
+  const ond=Object.values(S.healthEval.kengetallen||{}).filter(i=>i.status==="oranje"||i.status==="rood").map(i=>`${i.status==="rood"?"Controleren":"Let op"}: ${i.naam}`);
+  const m06=(S.healthEval.mode06||[]).filter(m=>m.status!=="ok").map(m=>`Mode 06: ${m.naam}`);
+  const b2=[...S.dtcAlert.map(a=>`Nieuwe ${a.soort} foutcode ${a.code}`),...ond,...m06];
+  $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?"🔧 "+b2.join(" · ")+" — tik voor details":"";
+  $("#logline").textContent=(S.logfile?`Log: ${S.logfile}`:"")+(c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+
+    (c.sessies?` · sessies ${c.sessies}, onderbrekingen ${c.onderbrekingen}`:"");
+  if($("#rit").classList.contains("on"))renderTrip();
+}
+$("#banner2").onclick=()=>document.querySelector('nav button[data-s="gz"]').click();
+setInterval(tick,400);
+
+// ---------- grafieken ----------
+const SERIES={c1:[["coolant","#ff9f1a","koelvloeistof"],["oil","#ff3b30","olie"],["iat","#4aa3ff","inlaat"],["ambient","#8a96a3","buiten"]],
+ c2:[["boost_cmd","#8a96a3","gevraagd"],["boost_act","#2ecc71","werkelijk"]],c3:[["rail_cmd","#8a96a3","gevraagd"],["rail_act","#4aa3ff","werkelijk"]],
+ c4:[["rpm","#2ecc71","toerental"],["load40","#ff9f1a","belasting"]]};
+function drawCharts(){
+  if(!$("#gr").classList.contains("on"))return;
+  const h=S.history.map(p=>({...p,load40:p.load==null?null:p.load*40}));
+  for(const id in SERIES){
+    const cv=$("#"+id),r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    cv.width=r.width*dpr;cv.height=r.height*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);
+    const W=r.width,H=r.height,L=42,B=16;let lo=Infinity,hi=-Infinity;
+    for(const [k] of SERIES[id])for(const p of h)if(p[k]!=null){lo=Math.min(lo,p[k]);hi=Math.max(hi,p[k])}
+    $("#l"+id.slice(1)).innerHTML=SERIES[id].map(([k,c,n])=>`<span><i style="background:${c}"></i>${n}</span>`).join("");
+    g.fillStyle="#8a96a3";g.font="11px system-ui";
+    if(!isFinite(lo)){g.fillText("nog geen data",L,H/2);continue}
+    if(hi-lo<1){hi+=1;lo-=1}const pd=(hi-lo)*.08;lo-=pd;hi+=pd;
+    const t0=h[0].t,t1=h[h.length-1].t,X=t=>L+(t-t0)/Math.max(t1-t0,1)*(W-L-6),Y=v=>(H-B)-(v-lo)/(hi-lo)*(H-B-6);
+    g.strokeStyle="#252c35";g.lineWidth=1;
+    for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W,y);g.stroke();g.fillText(Math.round(v),2,y+4)}
+    g.fillText(`-${Math.round((t1-t0)/60000)} min`,L,H-2);g.fillText("nu",W-20,H-2);
+    for(const [k,c] of SERIES[id]){g.strokeStyle=c;g.lineWidth=2;g.beginPath();let on=false;
+      for(const p of h){if(p[k]==null){on=false;continue}const x=X(p.t),y=Y(p[k]);on?g.lineTo(x,y):g.moveTo(x,y);on=true}g.stroke()}
+  }
+}
+setInterval(drawCharts,2000);addEventListener("resize",drawCharts);
+
+// ---------- foutcodes ----------
+$("#readDtc").onclick=async()=>{
+  if(S.conn.status!=="verbonden"){$("#dtcStatus").textContent="Niet verbonden met de auto";return}
+  $("#dtcStatus").textContent="uitlezen…";let r;
+  try{r=await APP.readDtcs()}catch(e){$("#dtcStatus").textContent="Fout: "+e.message;return}
+  $("#dtcStatus").textContent="uitgelezen "+new Date().toLocaleTimeString("nl-NL");
+  const list=(t,arr)=>`<div class="card"><h3>${t} (${arr.length})</h3>${arr.length?`<table>${arr.map(c=>
+    `<tr><td class="code">${c.code}</td><td>${esc(c.omschrijving)}${c.tip?`<br><span class="dim">Tip: ${esc(c.tip)}</span>`:""}</td></tr>`).join("")}</table>`:'<span class="tag ok">geen codes</span>'}</div>`;
+  let html=`<div class="card big">Motorlampje (MIL): <b style="color:${r.mil?"var(--bad)":"var(--ok)"}">${r.mil?"AAN":"uit"}</b></div>`;
+  html+=list("Opgeslagen",r.opgeslagen||[])+list("Pending (nog niet bevestigd)",r.pending||[]);
+  html+=r.permanent_nb?'<div class="card"><h3>Permanent</h3><span class="dim">Niet ondersteund door deze ECU (EOBD).</span></div>':list("Permanent",r.permanent||[]);
+  if(r.freeze_code&&r.freeze_code.length)html+=`<div class="card"><h3>Freeze frame bij ${r.freeze_code[0]} <span class="dim">[nog niet geverifieerd op deze auto]</span></h3><table>`+
+    Object.entries(r.freeze).map(([k,[v,u]])=>`<tr><td>${k}</td><td><b>${v}</b> ${u}</td></tr>`).join("")+"</table></div>";
+  html+='<div class="card"><h3>Readiness-monitoren</h3><table>'+Object.entries(r.readiness||{}).map(([k,v])=>
+    `<tr><td>${k}</td><td><span class="tag ${v==="klaar"?"ok":"no"}">${v}</span></td></tr>`).join("")+"</table></div>";
+  $("#dtcOut").innerHTML=html;
 };
-// Diagnose: commando's en antwoorden loggen (eerste 20 per sessie)
-let dbgN=0;ELM.debug=t=>{if(dbgN++<20)log(t)};
-$("#stop").onclick=()=>{want=false;running=false;Native.disconnect();dot("var(--dim)")};
+$("#m06Btn").onclick=async()=>{
+  if(S.conn.status!=="verbonden"){$("#m06Msg").textContent="Niet verbonden met de auto";return}
+  $("#m06Msg").textContent="uitlezen…";let t;
+  try{t=await APP.mode06()}catch(e){$("#m06Msg").textContent="Fout: "+e.message;return}
+  t.sort((a,b)=>(b.uitgevoerd-a.uitgevoerd)||(a.ok-b.ok));
+  $("#m06Msg").textContent=`${t.length} testen: ${t.filter(x=>x.uitgevoerd).length} uitgevoerd, ${t.filter(x=>x.uitgevoerd&&!x.ok).length} buiten grens`;
+  $("#m06Out").innerHTML=t.length?"<table><tr><th>Systeem</th><th>Test</th><th>Waarde</th><th>Min</th><th>Max</th><th></th></tr>"+t.map(x=>
+    `<tr><td>${x.naam}</td><td>${x.tid}</td><td><b>${x.waarde}</b></td><td>${x.min}</td><td>${x.max}</td><td>${!x.uitgevoerd?'<span class="dim">niet uitgevoerd</span>':`<span class="tag ${x.ok?"ok":"bad"}">${x.ok?"binnen grens":"BUITEN GRENS"}</span>`}</td></tr>`).join("")+"</table>":"Geen testresultaten.";
+};
+$("#clearBtn").onclick=async()=>{
+  const ok=await ask("Foutcodes wissen?",`<p>Hiermee gaan verloren:</p><ul><li><b>alle readiness-monitoren</b> (staan daarna op “niet klaar”; opnieuw doorlopen kan dagen rijden kosten, een keuring kan dan worden geweigerd)</li>
+    <li><b>freeze-frame-data</b> (de momentopname bij de storing)</li><li>opgeslagen en pending foutcodes</li></ul><p>De oorzaak wordt hiermee <b>niet</b> verholpen. Motor uit, contact aan.</p>`,"Ja, wissen",{check:true});
+  if(!ok)return;
+  $("#mMsg").textContent="bezig…";
+  try{const r=await APP.clearDtcs("WISSEN");$("#mMsg").textContent=r?"Gewist. Lees de codes opnieuw uit ter controle.":"ECU bevestigde het wissen niet."}
+  catch(e){$("#mMsg").textContent="Niet gewist: "+e.message}
+  setTimeout(closeModal,4000);
+};
+
+// ---------- rit ----------
+function renderTrip(){
+  const t=S.trip,m=t.max;
+  const rit=[["Afstand",fmt(t.afstand_km,1),"km"],["Brandstof [sch.]",fmt(t.brandstof_l,1),"L"],
+   ["Gem. verbruik [sch.]",t.afstand_km>1?fmt(t.brandstof_l/t.afstand_km*100,1):"–","L/100"],["Alarmen or./rood",`${t.alarmen.oranje}/${t.alarmen.rood}`,""],
+   ["Rijtijd",hm(t.rijtijd_s),"u:m"],["Stationair",hm(t.stationair_s),"u:m"],
+   ["Gem. snelheid",t.rijtijd_s>0?fmt(t.afstand_km/(t.rijtijd_s/3600),0):"–","km/u"],["Max koelvloeistof",fmt(m.coolant,0),"°C"],
+   ["Max olie",fmt(m.oil,0),"°C"],["Max inlaatlucht",fmt(m.iat,0),"°C"],["Max turbodruk",fmt(m.boost_act,0),"kPa"],["Max toerental",fmt(m.rpm,0),"rpm"]];
+  $("#trip").innerHTML=rit.map(r=>`<div class="tile"><div class="lbl">${r[0]}</div><div class="val" style="font-size:34px">${r[1]}<span class="unit">${r[2]}</span></div></div>`).join("");
+}
+function loadRitten(){
+  renderTrip();
+  const ritten=APP.store.get("ritten",[]).filter(r=>r._start!==S.trip.start);ritten.push({...APP.tripSummary(S.trip),huidig:true});
+  $("#ritten").innerHTML="<tr><th>Start</th><th>km</th><th>Rijtijd</th><th>Stat.</th><th>L</th><th>L/100</th><th>Max kv/olie/inl</th><th>Alarmen</th></tr>"+
+   ritten.reverse().map(x=>`<tr${x.huidig?' style="color:var(--accent)"':""}><td>${x.start}${x.huidig?" (nu)":""}</td><td>${fmt(x.afstand_km,1)}</td><td>${hm(x.rijtijd_s)}</td><td>${hm(x.stationair_s)}</td>
+   <td>${fmt(x.brandstof_l,1)}</td><td>${x.l100??"–"}</td><td>${x.max.coolant??"–"}/${x.max.oil??"–"}/${x.max.iat??"–"}</td>
+   <td>${x.alarmen.oranje?`<span class="tag no">${x.alarmen.oranje}</span> `:""}${x.alarmen.rood?`<span class="tag bad">${x.alarmen.rood}</span>`:""}${!x.alarmen.oranje&&!x.alarmen.rood?'<span class="tag ok">geen</span>':""}</td></tr>`).join("");
+  const T=S.tank,b=T.tankbeurten||[];
+  $("#tankInfo").innerHTML=`Kalibratiefactor: <b>×${T.factor}</b>${b.some(x=>x.factor)?"":" (nog niet gekalibreerd)"} · geschat sinds laatste tankbeurt: ${fmt((T.sinds_tank_raw_l||0)*T.factor,1)} L`+
+   (b.length?"<br>Laatste: "+b.slice(-5).reverse().map(x=>`${x.tijd}: ${x.liters} L${x.factor?` (×${x.factor})`:""}`).join(" · "):"");
+}
+$("#tripReset").onclick=async()=>{
+  if(!await ask("Nieuwe rit?","<p>De huidige rit wordt opgeslagen en een nieuwe rit gestart.</p>","Ja, nieuwe rit"))return;
+  closeModal();APP.tripReset();loadRitten()};
+$("#tankBtn").onclick=async()=>{
+  const l=parseFloat($("#tankL").value.replace(",","."));
+  if(!(l>=1&&l<=150)){$("#tankMsg").textContent="Vul een aantal liter tussen 1 en 150 in.";return}
+  if(!await ask("Tankbeurt opslaan?",`<p>${l} liter, tank helemaal vol?</p>`,"Ja, opslaan"))return;
+  closeModal();const e=APP.addTankbeurt(l);$("#tankMsg").textContent=`Opgeslagen.${e.factor?` Factor deze tankbeurt ×${e.factor}.`:" Teller gestart."}`;$("#tankL").value="";loadRitten()};
+
+// ---------- gezondheid ----------
+function loadHealth(){
+  APP.refreshHealth();const r=S.healthEval;
+  $("#gzInfo").textContent=`${r.ritten_basis} eerdere rit(ten) met kengetallen.`;
+  $("#gzDtc").innerHTML=S.dtcAlert.map(a=>`<div class="card" style="border-color:var(--warn)"><span class="code">${a.code}</span> (${a.soort}, ${a.tijd})<br>${esc(a.omschrijving)}${a.tip?`<br><span class="dim">Tip: ${esc(a.tip)}</span>`:""}</div>`).join("");
+  const k=r.kengetallen||{},p=r.voortgang||{};
+  $("#gzTab").innerHTML="<tr><th>Kengetal</th><th>Laatste</th><th>Basislijn</th><th>Status</th><th>Venster</th></tr>"+Object.entries(k).map(([key,i])=>
+   `<tr><td>${i.naam}${i.status==="oranje"||i.status==="rood"?`<br><span class="dim">Tip: ${i.tip}</span>`:""}</td>
+   <td><b>${i.laatste??"–"}</b> ${i.laatste!=null?i.eenheid:""}${i.laatste!=null?`<br><span class="dim">${i.bron}</span>`:""}</td>
+   <td>${i.basis!=null?`${i.basis} ± ${i.spreiding}<br><span class="dim">afw. ${i.afwijking>0?"+":""}${i.afwijking}</span>`:`<span class="dim">${i.n_basis}/5</span>`}</td>
+   <td>${ST[i.status]||i.status}</td><td><span class="bar"><i style="width:${Math.round((p[key]||0)*100)}%"></i></span></td></tr>`).join("");
+  const m=r.mode06||[];
+  $("#gzM06").innerHTML=m.length?"<tr><th>Test</th><th>Waarde</th><th>Grens</th><th>Marge nu/eerst</th><th>Status</th></tr>"+m.map(x=>
+   `<tr><td>${x.naam} ${x.tid}</td><td>${x.waarde}</td><td>${x.grens}</td><td>${x.marge}/${x.marge_eerst}</td><td>${ST[x.status]}</td></tr>`).join(""):'<tr><td class="dim">Nog geen Mode 06-metingen.</td></tr>';
+  const ev=APP.store.get("events",[]).slice(-20).reverse();
+  $("#gzEv").innerHTML=ev.length?ev.map(e=>`<tr><td class="dim">${e.tijd}</td><td>${esc(e.tekst)}</td></tr>`).join(""):'<tr><td class="dim">Nog geen gebeurtenissen.</td></tr>';
+}
+
+// ---------- instellingen ----------
+const evlog=[];
+ELM.onState((s,m)=>{evlog.push(new Date().toLocaleTimeString("nl-NL")+"  "+s+" "+m);if(evlog.length>100)evlog.shift();
+  if($("#set").classList.contains("on"))$("#evlog").textContent=evlog.join("\n")});
+function loadSettings(){
+  if(Native.hasPermission()){
+    const list=JSON.parse(Native.bondedDevices()),cur=APP.store.get("dev","66:1E:87:05:07:FA");
+    $("#dev").innerHTML=list.map(d=>`<option value="${d.address}"${d.address===cur?" selected":""}>${esc(d.name)} (${d.address})</option>`).join("");
+  }
+  const c=S.conn.info||{};
+  $("#connInfo").textContent=[c.elm,c.proto,c.vin].filter(Boolean).join(" · ");
+  $("#didOn").checked=APP.CFG.did_onderzoek;
+  $("#cfgTxt").value=JSON.stringify(APP.CFG.alarms,null,1);
+  $("#evlog").textContent=evlog.join("\n");
+  APP.flushLogs(true);
+  const files=JSON.parse(Native.listFiles());
+  $("#files").innerHTML=files.length?files.map(f=>`<tr><td>${esc(f.name)}<br><span class="dim">${(f.size/1024).toFixed(0)} kB · ${new Date(f.modified).toLocaleString("nl-NL")}</span></td>
+    <td><button class="btn small" data-exp="${esc(f.name)}">Exporteren</button> <button class="btn small ghost" data-del="${esc(f.name)}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen logbestanden.</td></tr>';
+}
+$("#files").onclick=async e=>{
+  const x=e.target.dataset.exp,d=e.target.dataset.del;
+  if(x){const r=Native.exportFile(x);e.target.textContent=r.startsWith("fout")?"Mislukt":"Opgeslagen ✓";e.target.title=r}
+  if(d){if(!await ask("Logbestand verwijderen?",`<p>${esc(d)} wordt definitief verwijderd uit de app. Dit kan niet ongedaan worden gemaakt.</p>`,"Ja, verwijderen"))return;
+    closeModal();Native.deleteFile(d);loadSettings()}
+};
+$("#dev").onchange=e=>APP.store.set("dev",e.target.value);
+$("#connBtn").onclick=()=>{if(!Native.hasPermission()){Native.requestPermission();return}APP.run()};
+$("#stopBtn").onclick=()=>APP.stop();
+$("#didOn").onchange=e=>APP.setConfig?APP.setConfig({did_onderzoek:e.target.checked}):(APP.CFG.did_onderzoek=e.target.checked);
+$("#cfgSave").onclick=()=>{
+  try{const a=JSON.parse($("#cfgTxt").value);Object.assign(APP.CFG.alarms,a);APP.store.set("cfg",{did_onderzoek:APP.CFG.did_onderzoek,alarms:APP.CFG.alarms});$("#cfgMsg").textContent="Opgeslagen"}
+  catch(e){$("#cfgMsg").textContent="Fout in de tekst: "+e.message}};
+$("#cfgReset").onclick=()=>{$("#cfgTxt").value=JSON.stringify(APP.DEFAULT_CFG.alarms,null,1);$("#cfgMsg").textContent="Standaardwaarden geladen; tik Opslaan om te bewaren."};
+$("#backupBtn").onclick=()=>{
+  const data={gemaakt:new Date().toISOString(),ritten:APP.store.get("ritten",[]),health:APP.store.get("health",[]),mode06:APP.store.get("mode06",[]),
+    events:APP.store.get("events",[]),tank:APP.store.get("tank",{}),cfg:APP.store.get("cfg",{})};
+  const r=Native.saveFile("sprinter_backup_"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(data,null,1));
+  $("#backupMsg").textContent=r.startsWith("fout")?r:"Opgeslagen in "+r};
+
+// ---------- start ----------
+ELM.onState(s=>{if(s==="permissie"&&Native.hasPermission())APP.run()});
+try{const t=localStorage.getItem("tab");if(t)document.querySelector(`nav button[data-s="${t}"]`)?.click()}catch(e){}
+if(Native.hasPermission())APP.run();else S.conn.error="Bluetooth-toestemming nodig";
 </script>
 </body>
 </html>
