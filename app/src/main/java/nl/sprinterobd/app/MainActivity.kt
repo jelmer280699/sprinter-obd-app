@@ -88,9 +88,11 @@ class MainActivity : Activity() {
         val dev = bm.adapter.getRemoteDevice(address)
         // Geen cancelDiscovery(): vereist BLUETOOTH_SCAN en wij scannen nooit (alleen gekoppelde apparaten).
         // Verschillende ELM327-klonen accepteren verschillende varianten; probeer ze na elkaar.
+        // Volgorde is belangrijk: een mislukte poging die wordt gesloten kan kort daarna de hele
+        // Bluetooth-link neerhalen. Op deze VEEPEAK werkt 'beveiligd SPP' (getest 2026-11-08), dus die eerst.
         val attempts: List<Pair<String, () -> BluetoothSocket>> = listOf(
-            "onbeveiligd SPP" to { dev.createInsecureRfcommSocketToServiceRecord(SPP) },
             "beveiligd SPP" to { dev.createRfcommSocketToServiceRecord(SPP) },
+            "onbeveiligd SPP" to { dev.createInsecureRfcommSocketToServiceRecord(SPP) },
             "onbeveiligd kanaal 1" to {
                 dev.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
                     .invoke(dev, 1) as BluetoothSocket
@@ -114,7 +116,7 @@ class MainActivity : Activity() {
                     last = e
                     emit("onSerialState", "poging", "mislukt: $name: ${e.message}")
                     try { s?.close() } catch (_: Exception) {}
-                    Thread.sleep(400)
+                    Thread.sleep(1500)  // link eerst laten afbreken vóór de volgende poging
                 }
             }
         }
@@ -124,9 +126,10 @@ class MainActivity : Activity() {
     private fun readLoop(input: InputStream) {
         val buf = ByteArray(1024)
         while (reading) {
-            val n = try { input.read(buf) } catch (e: Exception) { -1 }
+            var why = "einde van de stroom"
+            val n = try { input.read(buf) } catch (e: Exception) { why = e.message ?: e.javaClass.simpleName; -1 }
             if (n < 0) {
-                if (reading) { closeSocket(); emit("onSerialState", "verbroken", "Verbinding verbroken") }
+                if (reading) { closeSocket(); emit("onSerialState", "verbroken", "Verbinding verbroken ($why)") }
                 break
             }
             if (n > 0) emit("onSerialData", String(buf, 0, n, Charsets.US_ASCII))
