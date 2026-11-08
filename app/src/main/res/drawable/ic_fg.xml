@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Eenvoudige meter: boog + naald, binnen de veilige zone (66dp) van een adaptief icoon -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#2ECC71" android:strokeWidth="6" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M32,70 A24,24 0 0,1 54,40" />
+    <path android:strokeColor="#FF9F1A" android:strokeWidth="6" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,40 A24,24 0 0,1 70,46" />
+    <path android:strokeColor="#FF3B30" android:strokeWidth="6" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M70,46 A24,24 0 0,1 76,70" />
+    <path android:strokeColor="#E8EDF2" android:strokeWidth="4" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,64 L66,48" />
+    <path android:fillColor="#E8EDF2"
+        android:pathData="M50,64 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+</vector>

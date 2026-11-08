@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sprinter OBD</title>
+<style>
+:root{--bg:#0b0d10;--card:#151a20;--line:#252c35;--txt:#e8edf2;--dim:#8a96a3;--ok:#2ecc71;--warn:#ff9f1a;--bad:#ff3b30;--accent:#4aa3ff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,sans-serif;
+ padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
+h1{font-size:22px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--dim)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+select,button{font-size:18px;padding:13px;border-radius:12px;width:100%}
+select{background:#0b0d10;color:var(--txt);border:1px solid var(--line);margin-bottom:10px}
+button{border:0;background:var(--accent);color:#000;font-weight:700}
+button.ghost{background:none;border:1px solid var(--line);color:var(--txt);margin-top:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{background:var(--card);border:3px solid var(--line);border-radius:16px;padding:12px}
+.lbl{color:var(--dim);font-size:15px}
+.val{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.unit{font-size:18px;color:var(--dim);font-weight:400;margin-left:4px}
+pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:40vh;overflow:auto;color:var(--dim)}
+</style>
+</head>
+<body>
+<h1><span class="dot" id="dot"></span>Sprinter OBD <span style="font-size:13px;color:var(--dim);font-weight:400">testversie</span></h1>
+<div class="card">
+  <select id="dev"></select>
+  <button id="go">Verbinden</button>
+  <button class="ghost" id="stop">Loskoppelen</button>
+</div>
+<div class="grid">
+  <div class="tile"><div class="lbl">Toerental</div><div class="val" id="rpm">–</div></div>
+  <div class="tile"><div class="lbl">Koelvloeistof</div><div class="val" id="cool">–<span class="unit">°C</span></div></div>
+  <div class="tile"><div class="lbl">Accu (ECU)</div><div class="val" id="volt">–<span class="unit">V</span></div></div>
+  <div class="tile"><div class="lbl">Metingen/s</div><div class="val" id="rate">–</div></div>
+</div>
+<div class="card" style="margin-top:12px"><pre id="log"></pre></div>
+<script src="elm.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const log=t=>{const p=$("#log");p.textContent+=new Date().toLocaleTimeString("nl-NL")+"  "+t+"\n";p.scrollTop=1e9};
+let running=false;
+const dot=c=>$("#dot").style.background=c;
+
+function loadDevices(){
+  if(!Native.hasPermission()){log("Geen Bluetooth-toestemming: tik Verbinden om te vragen.");return}
+  const list=JSON.parse(Native.bondedDevices());
+  let saved=null;try{saved=localStorage.getItem("dev")}catch(e){}
+  $("#dev").innerHTML=list.map(d=>`<option value="${d.address}">${d.name} (${d.address})</option>`).join("");
+  const pick=list.find(d=>d.address===saved)||list.find(d=>/veepeak|obd|elm/i.test(d.name));
+  if(pick)$("#dev").value=pick.address;
+  log(`${list.length} gekoppelde apparaten`+(pick?`, gekozen: ${pick.name}`:""));
+}
+window.addEventListener("load",loadDevices);
+ELM.onState((s,m)=>{
+  log(`status: ${s} ${m}`);
+  if(s==="permissie")loadDevices();
+  if(s==="verbroken"||s==="fout"){running=false;dot("var(--bad)")}
+});
+
+$("#go").onclick=async()=>{
+  if(!Native.hasPermission()){Native.requestPermission();return}
+  const addr=$("#dev").value;if(!addr)return;
+  try{localStorage.setItem("dev",addr)}catch(e){}
+  dot("var(--warn)");log("Verbinden met "+addr+"…");
+  const ok=await new Promise(res=>{const f=(s)=>{if(s==="verbonden")res(true);if(s==="fout")res(false)};ELM.onState(f)});
+  if(!ok)return;
+  try{
+    const i=await ELM.init();log(`ELM: ${i.elm} · ${i.proto}`);
+    const vin=await ELM.query("0902",5000);if(vin)log("VIN: "+String.fromCharCode(...vin.slice(3).filter(b=>b>32&&b<127)));
+    dot("var(--ok)");running=true;let n=0,t0=Date.now();
+    while(running){
+      const b=await ELM.query("010C0542",3000);n++;
+      if(b&&b[0]===0x41){
+        for(let k=1;k<b.length;){const pid=b[k++];
+          if(pid===0x0C){$("#rpm").textContent=Math.round((b[k]*256+b[k+1])/4);k+=2}
+          else if(pid===0x05){$("#cool").innerHTML=(b[k]-40)+'<span class="unit">°C</span>';k+=1}
+          else if(pid===0x42){$("#volt").innerHTML=((b[k]*256+b[k+1])/1000).toFixed(2)+'<span class="unit">V</span>';k+=2}
+          else break}
+      }
+      if(Date.now()-t0>3000){$("#rate").textContent=(n/((Date.now()-t0)/1000)).toFixed(1);n=0;t0=Date.now()}
+    }
+  }catch(e){log("FOUT: "+e.message);dot("var(--bad)")}
+};
+// Native.connect wordt pas aangeroepen nadat de luisteraar hierboven staat
+$("#go").addEventListener("click",()=>{if(Native.hasPermission()&&$("#dev").value)Native.connect($("#dev").value)});
+$("#stop").onclick=()=>{running=false;Native.disconnect();dot("var(--dim)")};
+</script>
+</body>
+</html>
