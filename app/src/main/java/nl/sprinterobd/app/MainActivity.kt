@@ -123,14 +123,18 @@ class MainActivity : Activity() {
 
     @SuppressLint("MissingPermission")
     @Volatile private var pauseMs: Long = 2000
+    // Elke connect/disconnect verhoogt de generatie; oudere verbindingsthreads stoppen dan stil.
+    @Volatile private var gen = 0
+    private class Superseded : Exception("vervangen door nieuwere poging")
 
-    private fun openSocket(address: String, method: String): BluetoothSocket {
+    private fun openSocket(address: String, method: String, myGen: Int): BluetoothSocket {
         val bm = getSystemService(BluetoothManager::class.java)
         val dev = bm.adapter.getRemoteDevice(address)
         if (method != "auto") {
             // Diagnose: één vaste methode, tot 3 keer, zonder andere varianten ertussen.
             var last: Exception? = null
             for (i in 1..3) {
+                if (myGen != gen) throw Superseded()
                 var s: BluetoothSocket? = null
                 try {
                     emit("onSerialState", "poging", "$method poging $i")
@@ -141,13 +145,17 @@ class MainActivity : Activity() {
                             .invoke(dev, 1) as BluetoothSocket
                     }
                     s.connect()
+                    if (myGen != gen) { try { s.close() } catch (_: Exception) {}; throw Superseded() }
                     emit("onSerialState", "poging", "gelukt: $method poging $i")
                     return s
+                } catch (e: Superseded) {
+                    throw e
                 } catch (e: Exception) {
                     last = e
-                    emit("onSerialState", "poging", "mislukt: $method poging $i: ${e.message}")
                     try { s?.close() } catch (_: Exception) {}
-                    Thread.sleep(pauseMs)
+                    if (myGen != gen) throw Superseded()
+                    emit("onSerialState", "poging", "mislukt: $method poging $i: ${e.message}")
+                    if (i < 3) Thread.sleep(pauseMs)
                 }
             }
             throw last ?: Exception("Verbinden mislukt")
@@ -189,16 +197,16 @@ class MainActivity : Activity() {
         throw last ?: Exception("Verbinden mislukt")
     }
 
-    private fun readLoop(input: InputStream) {
+    private fun readLoop(input: InputStream, myGen: Int) {
         val buf = ByteArray(1024)
-        while (reading) {
+        while (reading && myGen == gen) {
             var why = "einde van de stroom"
             val n = try { input.read(buf) } catch (e: Exception) { why = e.message ?: e.javaClass.simpleName; -1 }
             if (n < 0) {
-                if (reading) { closeSocket(); emit("onSerialState", "verbroken", "Verbinding verbroken ($why)") }
+                if (reading && myGen == gen) { closeSocket(); emit("onSerialState", "verbroken", "Verbinding verbroken ($why)") }
                 break
             }
-            if (n > 0) emit("onSerialData", String(buf, 0, n, Charsets.US_ASCII))
+            if (n > 0 && myGen == gen) emit("onSerialData", String(buf, 0, n, Charsets.US_ASCII))
         }
     }
 
@@ -231,25 +239,31 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun connectWith(address: String, method: String) {
+            val myGen = ++gen
             closeSocket()
-            thread(name = "bt-connect") {
+            thread(name = "bt-connect-$myGen") {
                 try {
                     if (!hasBt()) throw SecurityException("Geen Bluetooth-toestemming")
-                    val s = openSocket(address, method)
+                    val s = openSocket(address, method, myGen)
                     socket = s
                     out = s.outputStream
                     reading = true
                     emit("onSerialState", "verbonden", address)
-                    readLoop(s.inputStream)
+                    readLoop(s.inputStream, myGen)
+                } catch (e: Superseded) {
+                    // stil: een nieuwere poging of Loskoppelen heeft het overgenomen
                 } catch (e: Exception) {
-                    closeSocket()
-                    emit("onSerialState", "fout", e.message ?: e.javaClass.simpleName)
+                    if (myGen == gen) {
+                        closeSocket()
+                        emit("onSerialState", "fout", e.message ?: e.javaClass.simpleName)
+                    }
                 }
             }
         }
 
         @JavascriptInterface
         fun disconnect() {
+            gen++
             closeSocket()
             emit("onSerialState", "verbroken", "Losgekoppeld")
         }
