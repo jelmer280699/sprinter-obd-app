@@ -14,12 +14,14 @@
     listeners.forEach(f => { try { f(state, msg); } catch (e) {} });
   };
 
+  const dbg = t => { if (window.ELM && ELM.debug) try { ELM.debug(t); } catch (e) {} };
   function rawSend(cmd, ms) {
     return new Promise((resolve, reject) => {
       buf = "";
       waiter = { resolve, reject };
-      const t = setTimeout(() => { if (waiter) { waiter = null; reject(new Error("Timeout op " + cmd)); } }, ms);
-      const wrap = f => v => { clearTimeout(t); f(v); };
+      dbg("TX " + cmd);
+      const t = setTimeout(() => { if (waiter) { waiter = null; dbg("TIMEOUT " + cmd + " (ontvangen: " + JSON.stringify(buf) + ")"); reject(new Error("Timeout op " + cmd)); } }, ms);
+      const wrap = f => v => { clearTimeout(t); if (typeof v === "string") dbg("RX " + v.replace(/[\r\n]+/g, " | ").replace(/>/g, "").trim()); f(v); };
       waiter.resolve = wrap(resolve); waiter.reject = wrap(reject);
       if (!Native.write(cmd)) { clearTimeout(t); waiter = null; reject(new Error("Niet verzonden (geblokkeerd of niet verbonden): " + cmd)); }
     });
@@ -58,8 +60,9 @@
 
   async function query(cmd, ms) { return parseBytes(await send(cmd, ms)); }
 
-  async function init() {
-    await send("ATZ", 4000);
+  async function init(opts = {}) {
+    // ATZ = volledige reset van de ELM-chip; ATD = alleen standaardinstellingen (geen herstart).
+    if (opts.skipATZ) await send("ATD", 3000); else await send("ATZ", 4000);
     for (const c of ["ATE0", "ATL0", "ATS1", "ATH0", "ATAT1"]) await send(c, 2000);
     const elm = (await send("ATI", 2000)).replace(/>/g, "").trim();
     await send("ATSP6", 2000);

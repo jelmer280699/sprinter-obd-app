@@ -28,6 +28,13 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 <h1><span class="dot" id="dot"></span>Sprinter OBD <span style="font-size:13px;color:var(--dim);font-weight:400">testversie</span></h1>
 <div class="card">
   <select id="dev"></select>
+  <select id="method">
+    <option value="secure">Methode: beveiligd SPP (alleen deze, max 3x)</option>
+    <option value="insecure">Methode: onbeveiligd SPP (alleen deze, max 3x)</option>
+    <option value="channel1">Methode: kanaal 1 (alleen deze, max 3x)</option>
+    <option value="auto">Methode: automatisch (alle varianten)</option>
+  </select>
+  <label style="display:flex;gap:10px;align-items:center;margin:0 0 10px"><input type="checkbox" id="noatz" style="width:22px;height:22px"> ATZ overslaan (geen chip-reset)</label>
   <button id="go">Verbinden</button>
   <button class="ghost" id="stop">Loskoppelen</button>
 </div>
@@ -69,7 +76,7 @@ $("#go").onclick=async()=>{
   const ok=await new Promise(res=>{const f=(s)=>{if(s==="verbonden")res(true);if(s==="fout")res(false)};ELM.onState(f)});
   if(!ok)return;
   try{
-    const i=await ELM.init();log(`ELM: ${i.elm} · ${i.proto}`);
+    const i=await ELM.init({skipATZ:$("#noatz").checked});log(`ELM: ${i.elm} · ${i.proto}`);
     const vin=await ELM.query("0902",5000);if(vin)log("VIN: "+String.fromCharCode(...vin.slice(3).filter(b=>b>32&&b<127)));
     dot("var(--ok)");running=true;let n=0,t0=Date.now();
     while(running){
@@ -86,7 +93,10 @@ $("#go").onclick=async()=>{
   }catch(e){log("FOUT: "+e.message);dot("var(--bad)")}
 };
 // Native.connect wordt pas aangeroepen nadat de luisteraar hierboven staat
-$("#go").addEventListener("click",()=>{if(Native.hasPermission()&&$("#dev").value)Native.connect($("#dev").value)});
+$("#go").addEventListener("click",()=>{if(Native.hasPermission()&&$("#dev").value)Native.connectWith($("#dev").value,$("#method").value)});
+// Diagnose: elk commando en antwoord loggen (alleen de eerste 60 om het log leesbaar te houden)
+let dbgN=0;ELM.debug=t=>{if(dbgN++<60)log(t)};
+$("#go").addEventListener("click",()=>{dbgN=0});
 $("#stop").onclick=()=>{running=false;Native.disconnect();dot("var(--dim)")};
 </script>
 </body>

@@ -3,9 +3,14 @@ package nl.sprinterobd.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
 import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Environment
@@ -82,10 +87,64 @@ class MainActivity : Activity() {
         out = null
     }
 
+    // Meldt wanneer Android zelf de Bluetooth-link (ACL) als verbonden/verbroken ziet.
+    private val aclReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            val what = when (intent.action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> "ACL verbonden"
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> "ACL verbroken"
+                BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED -> "ACL verbreken aangevraagd"
+                else -> intent.action ?: "?"
+            }
+            emit("onSerialState", "android", what)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val f = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(aclReceiver, f, Context.RECEIVER_EXPORTED)
+        else registerReceiver(aclReceiver, f)
+    }
+
+    override fun onStop() {
+        try { unregisterReceiver(aclReceiver) } catch (_: Exception) {}
+        super.onStop()
+    }
+
     @SuppressLint("MissingPermission")
-    private fun openSocket(address: String): BluetoothSocket {
+    private fun openSocket(address: String, method: String): BluetoothSocket {
         val bm = getSystemService(BluetoothManager::class.java)
         val dev = bm.adapter.getRemoteDevice(address)
+        if (method != "auto") {
+            // Diagnose: één vaste methode, tot 3 keer, zonder andere varianten ertussen.
+            var last: Exception? = null
+            for (i in 1..3) {
+                var s: BluetoothSocket? = null
+                try {
+                    emit("onSerialState", "poging", "$method poging $i")
+                    s = when (method) {
+                        "secure" -> dev.createRfcommSocketToServiceRecord(SPP)
+                        "insecure" -> dev.createInsecureRfcommSocketToServiceRecord(SPP)
+                        else -> dev.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                            .invoke(dev, 1) as BluetoothSocket
+                    }
+                    s.connect()
+                    emit("onSerialState", "poging", "gelukt: $method poging $i")
+                    return s
+                } catch (e: Exception) {
+                    last = e
+                    emit("onSerialState", "poging", "mislukt: $method poging $i: ${e.message}")
+                    try { s?.close() } catch (_: Exception) {}
+                    Thread.sleep(2000)
+                }
+            }
+            throw last ?: Exception("Verbinden mislukt")
+        }
         // Geen cancelDiscovery(): vereist BLUETOOTH_SCAN en wij scannen nooit (alleen gekoppelde apparaten).
         // Verschillende ELM327-klonen accepteren verschillende varianten; probeer ze na elkaar.
         // Volgorde is belangrijk: een mislukte poging die wordt gesloten kan kort daarna de hele
@@ -158,12 +217,15 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun connect(address: String) {
+        fun connect(address: String) = connectWith(address, "auto")
+
+        @JavascriptInterface
+        fun connectWith(address: String, method: String) {
             closeSocket()
             thread(name = "bt-connect") {
                 try {
                     if (!hasBt()) throw SecurityException("Geen Bluetooth-toestemming")
-                    val s = openSocket(address)
+                    val s = openSocket(address, method)
                     socket = s
                     out = s.outputStream
                     reading = true
