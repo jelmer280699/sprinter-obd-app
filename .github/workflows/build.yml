@@ -2,7 +2,7 @@ name: APK bouwen
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
@@ -36,9 +36,11 @@ jobs:
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Hernoemen
+        if: github.ref == 'refs/heads/main'
         run: cp app/build/outputs/apk/release/app-release.apk "SprinterOBD-${{ github.run_number }}.apk"
 
       - name: Publiceren als release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
