@@ -87,13 +87,38 @@ class MainActivity : Activity() {
         val bm = getSystemService(BluetoothManager::class.java)
         val dev = bm.adapter.getRemoteDevice(address)
         // Geen cancelDiscovery(): vereist BLUETOOTH_SCAN en wij scannen nooit (alleen gekoppelde apparaten).
-        return try {
-            dev.createRfcommSocketToServiceRecord(SPP).also { it.connect() }
-        } catch (e: Exception) {
-            // Veel ELM327-klonen: SDP-lookup faalt; terugval op RFCOMM-kanaal 1.
-            val m = dev.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-            (m.invoke(dev, 1) as BluetoothSocket).also { it.connect() }
+        // Verschillende ELM327-klonen accepteren verschillende varianten; probeer ze na elkaar.
+        val attempts: List<Pair<String, () -> BluetoothSocket>> = listOf(
+            "onbeveiligd SPP" to { dev.createInsecureRfcommSocketToServiceRecord(SPP) },
+            "beveiligd SPP" to { dev.createRfcommSocketToServiceRecord(SPP) },
+            "onbeveiligd kanaal 1" to {
+                dev.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
+                    .invoke(dev, 1) as BluetoothSocket
+            },
+            "beveiligd kanaal 1" to {
+                dev.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                    .invoke(dev, 1) as BluetoothSocket
+            },
+        )
+        var last: Exception? = null
+        for (round in 1..2) {
+            for ((name, make) in attempts) {
+                var s: BluetoothSocket? = null
+                try {
+                    emit("onSerialState", "poging", "$name (ronde $round)")
+                    s = make()
+                    s.connect()
+                    emit("onSerialState", "poging", "gelukt: $name")
+                    return s
+                } catch (e: Exception) {
+                    last = e
+                    emit("onSerialState", "poging", "mislukt: $name: ${e.message}")
+                    try { s?.close() } catch (_: Exception) {}
+                    Thread.sleep(400)
+                }
+            }
         }
+        throw last ?: Exception("Verbinden mislukt")
     }
 
     private fun readLoop(input: InputStream) {
