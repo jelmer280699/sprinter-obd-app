@@ -38,7 +38,10 @@
     },
     bondedDevices: () => JSON.stringify([{ name: "VEEPEAK (DEMO)", address: "66:1E:87:05:07:FA" }]),
     batteryOk: () => false, askBattery() {},
-    listFiles: () => JSON.stringify([{ name: "rit_DEMO.csv", size: 4096, modified: Date.now() }]),
+    listFiles: () => JSON.stringify([{ name: "rit_DEMO.csv", size: 4096, modified: Date.now(), lopend: true },
+      { name: "rit_20261109_090228.csv", size: 89416, modified: Date.now() - 864e5, exported: true },
+      { name: "did_onderzoek_20261110_120000.csv", size: 300000, modified: Date.now() - 3600e3, exported: !!window.__exp }]),
+    exportPending: () => { window.__exp = true; return "1 geëxporteerd"; },
     deleteFile: () => true, exportFile: n => "Downloads/SprinterOBD/" + n + " (demo)", saveFile: n => "Downloads/SprinterOBD/" + n + " (demo)",
   };
 })();

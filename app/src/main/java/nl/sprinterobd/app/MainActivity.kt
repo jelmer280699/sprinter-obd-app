@@ -177,9 +177,12 @@ class MainActivity : Activity(), Core.Listener {
         @JavascriptInterface
         fun listFiles(): String {
             svc?.core?.flushLogs()
+            val done = store()?.exported() ?: emptySet()
+            val current = setOf(svc?.core?.logfile ?: "")
             val arr = JSONArray()
             logDir().listFiles()?.sortedByDescending { it.lastModified() }?.forEach {
-                arr.put(JSONObject().put("name", it.name).put("size", it.length()).put("modified", it.lastModified()))
+                arr.put(JSONObject().put("name", it.name).put("size", it.length()).put("modified", it.lastModified())
+                    .put("exported", it.name in done).put("lopend", it.name in current))
             }
             return arr.toString()
         }
@@ -187,23 +190,21 @@ class MainActivity : Activity(), Core.Listener {
         @JavascriptInterface fun deleteFile(name: String): Boolean = File(logDir(), safe(name)).delete()
 
         @JavascriptInterface
-        fun exportFile(name: String): String {
-            val f = File(logDir(), safe(name))
-            if (!f.exists()) return "fout: bestand bestaat niet"
-            return saveFile(f.name, f.readText(Charsets.UTF_8))
+        fun exportFile(name: String): String = store()?.exportLog(name) ?: "fout: meetdienst draait niet"
+
+        /** Alles exporteren wat nog niet geëxporteerd is (behalve de lopende rit). Geeft aantal gelukt/mislukt. */
+        @JavascriptInterface
+        fun exportPending(): String {
+            val s = store() ?: return "fout: meetdienst draait niet"
+            svc?.core?.flushLogs()
+            val c = svc?.core
+            val r = s.exportPending(setOfNotNull(c?.logfile?.takeIf { c.tripActive }))
+            return "${r.count { !it.startsWith("fout") }} geëxporteerd" + r.filter { it.startsWith("fout") }.let { if (it.isEmpty()) "" else ", ${it.size} mislukt" }
         }
 
         /** Sla een tekstbestand op in Downloads/SprinterOBD (geen extra machtiging nodig). */
         @JavascriptInterface
-        fun saveFile(name: String, content: String): String = try {
-            val v = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, if (name.endsWith(".csv")) "text/csv" else "application/json")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SprinterOBD")
-            }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IllegalStateException("kon bestand niet aanmaken")
-            contentResolver.openOutputStream(uri)?.use { it.write(content.toByteArray(Charsets.UTF_8)) }
-            "Downloads/SprinterOBD/$name"
-        } catch (e: Exception) { "fout: ${e.message}" }
+        fun saveFile(name: String, content: String): String =
+            store()?.saveDownload(name, content.toByteArray(Charsets.UTF_8)) ?: "fout: meetdienst draait niet"
     }
 }

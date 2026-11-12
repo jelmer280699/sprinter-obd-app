@@ -174,7 +174,8 @@ class TripHealth(saved: JSONObject? = null) {
             single["opwarmtijd"] = ((now - coldStart) / 6000.0).roundToInt() / 10.0
         val hot = load != null && load >= 60
         if (hot && spd >= 40 && cool != null && amb != null && rt > 900) add("koeling", cool - amb)
-        if (hot && rpm >= 1800 && (d("boost_cmd") ?: 0.0) >= 140 && d("boost_act") != null) add("turbo", d("boost_cmd")!! - d("boost_act")!!)
+        if (hot && rpm >= 1800 && (d("boost_cmd") ?: 0.0) >= 140 && d("boost_act") != null && v["boost_begrensd"] != true)
+            add("turbo", d("boost_cmd")!! - d("boost_act")!!)
         if ((d("rail_cmd") ?: 0.0) >= 600 && d("rail_dev") != null) add("rail", d("rail_dev")!!)
         if (hot && spd >= 60 && d("iat") != null && amb != null) add("intercooler", d("iat")!! - amb)
         if (rpm >= 1200 && rt >= 600 && d("voltage") != null) add("laadspanning", d("voltage")!!)

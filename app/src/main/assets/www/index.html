@@ -129,7 +129,9 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
     <div class="row"><button class="btn" id="connBtn">Meting starten</button><button class="btn ghost" id="stopBtn">Meting stoppen</button></div>
     <p class="dim" id="connInfo"></p></div>
   <div class="card"><h3>Logbestanden</h3>
-    <p class="dim">Ritlogs (1 regel/s) en DID-onderzoek staan in de app. Exporteren zet een kopie in <b>Downloads/SprinterOBD</b>.</p>
+    <p class="dim">Na elke rit worden de ritlog en het DID-onderzoek <b>automatisch</b> naar <b>Downloads/SprinterOBD</b> gekopieerd
+      (Mijn bestanden → Downloads → SprinterOBD). Hieronder zie je per bestand of dat gelukt is.</p>
+    <div class="row" style="margin-bottom:8px"><button class="btn ghost" id="expAll">Alles exporteren wat nog niet geëxporteerd is</button><span class="dim" id="expMsg"></span></div>
     <div class="scroll"><table id="files"></table></div></div>
   <div class="card"><h3>DID-onderzoek (Mercedes Mode 22)</h3>
     <label class="row"><input type="checkbox" id="didOn" style="width:22px;height:22px"> Tijdens het rijden telkens één van de 108 live-DID's meelezen en loggen</label></div>
@@ -205,7 +207,7 @@ function tick(){
     if(k==="mil"){val=v.mil==null?"–":v.mil?"AAN":"uit";if(v.dtc_count!=null)sub=`${v.dtc_count} code(s)`}
     if(k==="fuel"){if(v.l100!=null){val=fmt(v.l100,1);unit="L/100";sub=`${fmt(v.fuel_lph,1)} L/u`}else{val=fmt(v.fuel_lph,1);unit="L/u";sub="stilstand"}
       if(S.tank.factor&&S.tank.factor!==1)sub+=` · ×${S.tank.factor}`}
-    if(k==="boost_act"&&v.boost_cmd!=null)sub=`gevr. ${fmt(v.boost_cmd,0)} · Δ ${fmt(v.boost_dev,0)}`;
+    if(k==="boost_act"&&v.boost_cmd!=null)sub=`gevr. ${fmt(v.boost_cmd,0)} · Δ ${fmt(v.boost_dev,0)}`+(v.boost_bron==="DID 202F"?" · via 202F":"")+(v.boost_begrensd?" · ≥255":"");
     if(k==="rail_act"&&v.rail_cmd!=null)sub=`gevr. ${fmt(v.rail_cmd,0)} · ${fmt(v.rail_dev,0)} %`;
     if(k==="coolant"&&al.coolant_reden)sub=al.coolant_reden;
     if(k==="voltage"&&(v.rpm||0)<=500)sub="motor uit: geen alarm";
@@ -219,7 +221,7 @@ function tick(){
   const b2=[...S.dtcAlert.map(a=>`Nieuwe ${a.soort} foutcode ${a.code}`),...ond,...m06];
   $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?"🔧 "+b2.join(" · ")+" — tik voor details":"";
   $("#logline").textContent=(S.tripActive?`Rit loopt · log: ${S.logfile}`:"Geen rit actief: start automatisch zodra de motor draait")+
-    (c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+(c.sessies?` · verbindingen ${c.sessies}, onderbrekingen ${c.onderbrekingen}`:"");
+    (c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+(c.sessies?` · verbindingen ${c.sessies}, onderbrekingen ${c.onderbrekingen}, opgevangen haperingen ${c.hersteld||0}`:"");
   if($("#rit").classList.contains("on"))renderTrip();
 }
 $("#banner2").onclick=()=>document.querySelector('nav button[data-s="gz"]').click();
@@ -356,12 +358,16 @@ function loadSettings(){
   $("#cfgTxt").value=JSON.stringify(APP.CFG.alarms,null,1);
   $("#evlog").textContent=evlog.join("\n");
   const files=JSON.parse(Native.listFiles());
+  const open=files.filter(f=>!f.exported&&!f.lopend).length;
+  $("#expMsg").textContent=open?`${open} nog niet geëxporteerd`:"alles geëxporteerd ✓";
   $("#files").innerHTML=files.length?files.map(f=>`<tr><td>${esc(f.name)}<br><span class="dim">${(f.size/1024).toFixed(0)} kB · ${new Date(f.modified).toLocaleString("nl-NL")}</span></td>
-    <td><button class="btn small" data-exp="${esc(f.name)}">Exporteren</button> <button class="btn small ghost" data-del="${esc(f.name)}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen logbestanden.</td></tr>';
+    <td>${f.lopend?'<span class="tag no">lopende rit</span>':f.exported?'<span class="tag ok">✓ geëxporteerd</span>':'<span class="tag bad">nog niet</span>'}</td>
+    <td><button class="btn small${f.exported?" ghost":""}" data-exp="${esc(f.name)}">${f.exported?"Opnieuw":"Exporteren"}</button> <button class="btn small ghost" data-del="${esc(f.name)}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen logbestanden.</td></tr>';
 }
+$("#expAll").onclick=()=>{$("#expMsg").textContent="bezig…";setTimeout(()=>{const r=Native.exportPending();loadSettings();$("#expMsg").textContent=r},50)};
 $("#files").onclick=async e=>{
   const x=e.target.dataset.exp,d=e.target.dataset.del;
-  if(x){const r=Native.exportFile(x);e.target.textContent=r.startsWith("fout")?"Mislukt":"Opgeslagen ✓";e.target.title=r}
+  if(x){const r=Native.exportFile(x);if(r.startsWith("fout")){e.target.textContent="Mislukt";e.target.title=r}else loadSettings()}
   if(d){if(!await ask("Logbestand verwijderen?",`<p>${esc(d)} wordt definitief verwijderd uit de app. Dit kan niet ongedaan worden gemaakt.</p>`,"Ja, verwijderen"))return;
     closeModal();Native.deleteFile(d);loadSettings()}
 };

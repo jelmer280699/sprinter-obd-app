@@ -44,8 +44,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             "rail_act", "rail_cmd", "maf", "lambda", "throttle", "pedal", "baro", "runtime")
         private const val DIESEL_AFR = 14.5; private const val DIESEL_KG_L = 0.835
         val DEFAULT_CFG = """{"did_onderzoek":true,"alarms":{"coolant":{"oranje":106,"rood":112},"coolant_koud":{"na_s":1200,"onder":70},
-            "oil":{"oranje":120,"rood":130},"iat":{"oranje":60,"rood":75},"boost_dev":{"oranje":20,"rood":40,"duur_s":3},
-            "rail_dev":{"oranje":10,"rood":20,"duur_s":2},"voltage":{"laag_oranje":12.8,"laag_rood":12.4,"hoog_oranje":14.9,"hoog_rood":15.2},
+            "oil":{"oranje":120,"rood":130},"iat":{"oranje":60,"rood":75},"boost_dev":{"oranje":20,"rood":40,"duur_s":5},
+            "rail_dev":{"oranje":10,"rood":20,"duur_s":2},"voltage":{"laag_oranje":12.3,"laag_rood":12.0,"duur_s":60,"hoog_oranje":14.9,"hoog_rood":15.2},
             "load":{"oranje":85,"duur_s":60},"rpm":{"oranje":4000,"rood":4500}}}"""
     }
 
@@ -82,6 +82,12 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             if (s.has("did_onderzoek")) d.put("did_onderzoek", s.getBoolean("did_onderzoek"))
             if (s.has("dev")) d.put("dev", s.getString("dev"))
             s.optJSONObject("alarms")?.let { a -> val da = d.getJSONObject("alarms"); a.keys().forEach { da.put(it, a.get(it)) } }
+            // Oude standaard accugrenzen (12,8/12,4 zonder duur) vervangen door de nieuwe; zelf aangepaste blijven staan.
+            val v = d.getJSONObject("alarms").getJSONObject("voltage")
+            if (v.optDouble("laag_oranje") == 12.8 && v.optDouble("laag_rood") == 12.4 && !v.has("duur_s"))
+                d.getJSONObject("alarms").put("voltage", JSONObject(DEFAULT_CFG).getJSONObject("alarms").getJSONObject("voltage"))
+            val b = d.getJSONObject("alarms").getJSONObject("boost_dev")
+            if (b.optDouble("duur_s") == 3.0) b.put("duur_s", 5)   // oude standaard -> nieuwe
         } catch (_: Exception) {}
         return d
     }
@@ -173,12 +179,12 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     // ---------------- poller ----------------
     private fun q(e: Elm, pids: List<String>): Map<Int, IntArray> {
         if (pids.size > 1 && multi != false) {
-            val got = Pids.split(e.query("01" + pids.joinToString("")))
+            val got = Pids.split(e.query("01" + pids.joinToString(""), 2500))
             if (multi == null && got.isNotEmpty()) multi = pids.all { it.toInt(16) in got }
             if (multi == true) return got
         }
         val out = HashMap<Int, IntArray>()
-        for (p in pids) out.putAll(Pids.split(e.query("01$p")))
+        for (p in pids) out.putAll(Pids.split(e.query("01$p", 2500)))
         return out
     }
 
@@ -190,28 +196,60 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         } catch (_: Exception) { emptyList() }
     }
 
+    /** Aantal keer dat een gemist/afwijkend antwoord is opgevangen zonder opnieuw te verbinden. */
+    @Volatile var hersteld = 0
+
     private fun pollLoop(e: Elm) {
-        var cycle = 0; var nodata = 0; var tSlow = 0L; var tVslow = 0L; var tDtc = System.currentTimeMillis() - 540_000
+        var cycle = 0; var nodata = 0; var errors = 0
+        var tSlow = 0L; var tVslow = 0L; var tDtc = System.currentTimeMillis() - 540_000
         while (want) {
-            val got = HashMap(q(e, FAST))
-            nodata = if (got.isEmpty()) nodata + 1 else 0
-            if (nodata >= 5) throw IOException("ECU antwoordt niet meer (contact uit?)")
-            lastEcu = System.currentTimeMillis()
-            if (cycle % 2 == 0) got.putAll(q(e, MEDIUM))
-            val now = System.currentTimeMillis()
-            if (now - tSlow > 5000) { got.putAll(q(e, SLOW)); got.putAll(q(e, SLOW_SINGLE)); tSlow = now }
-            if (now - tVslow > 10000) { got.putAll(q(e, VERY_SLOW)); tVslow = now }
-            val nv = HashMap<String, Any>()
-            Pids.decode(got, nv)
-            update(nv)
-            if (now - tDtc > 600_000) { tDtc = now; autoDtc(e) }
-            if (tripActive && !trip.optBoolean("_mode06") && (d("runtime") ?: 0.0) >= 1200 && (d("rpm") ?: 0.0) > 400) {
-                trip.put("_mode06", true)
-                try { storeMode06(Mode06.read(e)) } catch (_: Exception) {}
+            try {
+                val got = HashMap(q(e, FAST))
+                nodata = if (got.isEmpty()) nodata + 1 else 0
+                if (nodata >= 5) throw IOException("ECU antwoordt niet meer (contact uit?)")
+                lastEcu = System.currentTimeMillis()
+                if (cycle % 2 == 0) got.putAll(q(e, MEDIUM))
+                val now = System.currentTimeMillis()
+                if (now - tSlow > 5000) { got.putAll(q(e, SLOW)); got.putAll(q(e, SLOW_SINGLE)); tSlow = now }
+                if (now - tVslow > 10000) { got.putAll(q(e, VERY_SLOW)); tVslow = now }
+                val nv = HashMap<String, Any>()
+                Pids.decode(got, nv)
+                boostFallback(e, nv)
+                update(nv)
+                if (now - tDtc > 600_000) { tDtc = now; autoDtc(e) }
+                if (tripActive && !trip.optBoolean("_mode06") && (d("runtime") ?: 0.0) >= 1200 && (d("rpm") ?: 0.0) > 400) {
+                    trip.put("_mode06", true)
+                    try { storeMode06(Mode06.read(e)) } catch (_: Exception) {}
+                }
+                if (cfg.optBoolean("did_onderzoek", true) && (d("rpm") ?: 0.0) > 0) research(e)
+                errors = 0
+            } catch (ex: IOException) {
+                // Eén gemist of afwijkend antwoord (time-out, 'STOPPED', 'CAN ERROR') is geen reden om de hele
+                // Bluetooth-verbinding opnieuw op te bouwen (kostte ~10 s per keer, ~25 % gaten; ritten 8-9 nov).
+                // Alleen opnieuw verbinden als de socket echt weg is of het 3x achter elkaar misgaat.
+                if (!e.alive || ex.message?.startsWith("ECU antwoordt niet") == true) throw ex
+                errors++
+                if (errors >= 3) throw ex
+                hersteld++
+                Thread.sleep(250)
             }
-            if (cfg.optBoolean("did_onderzoek", true) && (d("rpm") ?: 0.0) > 0) research(e)
             cycle++
         }
+    }
+
+    /**
+     * PID 70 (turbodruk werkelijk) kapt af op 255 kPa (ritten 8-9 nov: 316 van 406 metingen >= 250 waren exact 255,0).
+     * Dan de Mercedes-DID 202F lezen (geverifieerd: 0,419 x ruw + 7,6 kPa, r = 0,994, n = 263).
+     */
+    private fun boostFallback(e: Elm, nv: HashMap<String, Any>) {
+        val act = nv["boost_act"] as? Double ?: return
+        nv["boost_begrensd"] = false
+        if (act < 254.9) { nv["boost_bron"] = "PID 70"; return }
+        nv["boost_bron"] = "DID 202F"
+        val d = try { e.readDid(0x202F) } catch (_: IOException) { null }
+        if (d == null) { nv["boost_begrensd"] = true; return }   // onbekend boven 255: geen tekort berekenen
+        var raw = 0L; for (b in d) raw = raw * 256 + b
+        nv["boost_act"] = ((0.41901 * raw + 7.588) * 10).roundToInt() / 10.0
     }
 
     private fun research(e: Elm) {
@@ -273,16 +311,22 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         // vraagt de ECU al raildruk terwijl de pomp stilstaat (gaf vals rood alarm, gemeld 2026-11-08).
         for (key in listOf("boost_dev", "rail_dev")) {
             val v = d(key)
-            if (v == null || runningMs < 10_000) { since.remove(key + "_r"); since.remove(key + "_o"); continue }
+            // Turbotekort pas vanaf 1800 rpm: daaronder loopt de turbo bij optrekken normaal achter (rit 8 nov).
+            val lowRpm = key == "boost_dev" && rpm < 1800
+            if (v == null || runningMs < 10_000 || lowRpm) { since.remove(key + "_r"); since.remove(key + "_o"); continue }
             val t = c.getJSONObject(key); val du = t.getDouble("duur_s")
             a[key] = if (dur(key + "_r", v >= t.getDouble("rood"), du)) "rood" else if (dur(key + "_o", v >= t.getDouble("oranje"), du)) "oranje" else "ok"
         }
         // Accuspanning pas 30 s na de start beoordelen (Mercedes laadt pas na enkele seconden; getest 2026-11-08).
-        val u = d("voltage"); val t = c.getJSONObject("voltage")
-        if (u != null && rpm > 500 && runningMs > 30_000)
-            a["voltage"] = if (u <= t.getDouble("laag_rood") || u >= t.getDouble("hoog_rood")) "rood"
-            else if (u <= t.getDouble("laag_oranje") || u >= t.getDouble("hoog_oranje")) "oranje" else "ok"
-        else if (u != null) a["voltage"] = "ok"
+        // Te laag pas na 'duur_s' aanhoudend: het Mercedes-laadbeheer laat de spanning tijdens het rijden
+        // normaal zakken tot ~12,45 V en laadt in pieken tot 14,6 V (ritten 8-9 nov).
+        val u = d("voltage"); val t = c.getJSONObject("voltage"); val vdur = t.optDouble("duur_s", 60.0)
+        if (u != null && rpm > 500 && runningMs > 30_000) {
+            val hoogR = u >= t.getDouble("hoog_rood"); val hoogO = u >= t.getDouble("hoog_oranje")
+            val laagR = dur("u_laag_r", u <= t.getDouble("laag_rood"), vdur)
+            val laagO = dur("u_laag_o", u <= t.getDouble("laag_oranje"), vdur)
+            a["voltage"] = if (hoogR || laagR) "rood" else if (hoogO || laagO) "oranje" else "ok"
+        } else if (u != null) { a["voltage"] = "ok"; since.remove("u_laag_r"); since.remove("u_laag_o") }
         d("load")?.let { a["load"] = if (dur("load", it >= c.getJSONObject("load").getDouble("oranje"), c.getJSONObject("load").getDouble("duur_s"))) "oranje" else "ok" }
         (values["mil"] as? Boolean)?.let { a["mil"] = if (it) "rood" else "ok" }
         return a
@@ -303,9 +347,11 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         // Afwijkingen alleen met draaiende motor (anders zijn ze betekenisloos, zie evaluateAlarms)
         val running = (d("rpm") ?: 0.0) > 500
         val bc = d("boost_cmd"); val ba = d("boost_act")
-        if (running && bc != null && ba != null) values["boost_dev"] = ((bc - ba) * 10).roundToInt() / 10.0 else values.remove("boost_dev")
+        if (running && bc != null && ba != null && values["boost_begrensd"] != true) values["boost_dev"] = ((bc - ba) * 10).roundToInt() / 10.0 else values.remove("boost_dev")
         val rc = d("rail_cmd"); val ra = d("rail_act")
-        if (running && rc != null && rc > 200 && ra != null) values["rail_dev"] = (abs(rc - ra) / rc * 1000).roundToInt() / 10.0 else values.remove("rail_dev")
+        // Raildruk-tekort: alleen te LAAG telt (filter/pomp). Te hoog bij gas los is normaal (druk zakt langzamer
+        // dan gevraagd) en gaf valse alarmen (rit 8 nov 19:22-19:31).
+        if (running && rc != null && rc > 200 && ra != null) values["rail_dev"] = (max(0.0, rc - ra) / rc * 1000).roundToInt() / 10.0 else values.remove("rail_dev")
         val maf = d("maf"); val lam = d("lambda"); val load = d("load")
         if (maf != null && lam != null && load != null) {
             // λ ≤ 1,05 bestaat niet bij een diesel: sonde koud/niet actief -> rekenen met 2,0 (bovengrens; tank-kalibratie corrigeert)
@@ -406,7 +452,14 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         logEvent("rit", "Rit beëindigd (${reden}): %.1f km".format(Locale.ROOT, trip.getDouble("afstand_km")))
         store.set("trip_live", "{}")
         store.set("tank", tank.toString())
+        // Automatisch exporteren naar Downloads/SprinterOBD: deze rit + alles wat eerder nog niet geëxporteerd was.
+        val files = listOf(logfile, resFile).filter { it.isNotEmpty() }
         logfile = ""; resFile = ""
+        Thread({
+            val r = files.map { store.exportLog(it) } + store.exportPending()
+            val ok = r.count { !it.startsWith("fout") }; val fout = r.filter { it.startsWith("fout") }
+            logEvent("export", "$ok bestand(en) naar Downloads/SprinterOBD" + if (fout.isNotEmpty()) " · ${fout.size} mislukt: ${fout.first()}" else "")
+        }, "export").start()
     }
 
     fun tripSummary(t: JSONObject): JSONObject {
@@ -462,7 +515,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         val age = JSONObject(); val now = System.currentTimeMillis(); for ((k, t) in updated) age.put(k, (now - t) / 1000.0)
         return JSONObject().put("values", v).put("age", age).put("alarms", JSONObject(alarms as Map<*, *>))
             .put("conn", JSONObject().put("status", status).put("error", error).put("info", info).put("multi", multi ?: JSONObject.NULL)
-                .put("sessies", sessies).put("onderbrekingen", onderbrekingen))
+                .put("sessies", sessies).put("onderbrekingen", onderbrekingen).put("hersteld", hersteld))
             .put("tripActive", tripActive).put("trip", if (tripActive) tripSummary(trip) else JSONObject.NULL)
             .put("health_features", health.features()).put("health_progress", health.progress())
             .put("dtcAlert", dtcAlert).put("logfile", logfile).put("tank", tank).put("cfg", cfg).toString()
