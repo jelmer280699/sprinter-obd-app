@@ -144,25 +144,30 @@ object Mode06 {
 /** Kengetallen per rit voor de trendbewaking (port van obd/health.py; beoordeling gebeurt in de interface). */
 class TripHealth(saved: JSONObject? = null) {
     companion object {
-        val MIN_N = mapOf("koeling" to 60, "turbo" to 30, "rail" to 30, "intercooler" to 60, "laadspanning" to 60,
+        // turbo_stabiel: mediaan van het tekort op stabiele vollastmomenten (vervangt 'turbo', dat door
+        // drukdips na het schakelen per rit tussen 9 en 32 kPa schommelde; ritten 8-14 nov).
+        val MIN_N = mapOf("koeling" to 60, "turbo_stabiel" to 15, "rail" to 30, "intercooler" to 60, "laadspanning" to 60,
             "rustspanning" to 1, "opwarmtijd" to 1, "stationair_maf" to 30)
     }
     private val sum = HashMap<String, Double>()
     private val n = HashMap<String, Int>()
     val single = HashMap<String, Double>()
     var coldStart: Long = 0
+    private val turbo = ArrayList<Double>()
+    private var prevTurboT = 0L; private var prevCmd = 0.0
 
     init {
         saved?.let { s ->
             s.optJSONObject("sum")?.let { o -> o.keys().forEach { sum[it] = o.getDouble(it) } }
             s.optJSONObject("n")?.let { o -> o.keys().forEach { n[it] = o.getInt(it) } }
             s.optJSONObject("single")?.let { o -> o.keys().forEach { single[it] = o.getDouble(it) } }
+            s.optJSONArray("turbo")?.let { a -> for (i in 0 until a.length()) turbo.add(a.getDouble(i)) }
             coldStart = s.optLong("coldStart", 0)
         }
     }
 
     fun toJson(): JSONObject = JSONObject().put("sum", JSONObject(sum as Map<*, *>)).put("n", JSONObject(n as Map<*, *>))
-        .put("single", JSONObject(single as Map<*, *>)).put("coldStart", coldStart)
+        .put("single", JSONObject(single as Map<*, *>)).put("coldStart", coldStart).put("turbo", org.json.JSONArray(turbo))
 
     private fun add(k: String, x: Double) { sum[k] = (sum[k] ?: 0.0) + x; n[k] = (n[k] ?: 0) + 1 }
 
@@ -174,8 +179,13 @@ class TripHealth(saved: JSONObject? = null) {
             single["opwarmtijd"] = ((now - coldStart) / 6000.0).roundToInt() / 10.0
         val hot = load != null && load >= 60
         if (hot && spd >= 40 && cool != null && amb != null && rt > 900) add("koeling", cool - amb)
-        if (hot && rpm >= 1800 && (d("boost_cmd") ?: 0.0) >= 140 && d("boost_act") != null && v["boost_begrensd"] != true)
-            add("turbo", d("boost_cmd")!! - d("boost_act")!!)
+        val cmd = d("boost_cmd") ?: 0.0
+        val turboOk = hot && rpm >= 1800 && cmd >= 140 && d("boost_act") != null && v["boost_begrensd"] != true
+        if (turboOk) {
+            // alleen stabiel: vorige meting (<=2 s geleden) ook vollast en gevraagde druk <10 kPa veranderd
+            if (now - prevTurboT <= 2000 && abs(cmd - prevCmd) < 10 && turbo.size < 5000) turbo.add(cmd - d("boost_act")!!)
+            prevTurboT = now; prevCmd = cmd
+        } else prevTurboT = 0
         if ((d("rail_cmd") ?: 0.0) >= 600 && d("rail_dev") != null) add("rail", d("rail_dev")!!)
         if (hot && spd >= 60 && d("iat") != null && amb != null) add("intercooler", d("iat")!! - amb)
         if (rpm >= 1200 && rt >= 600 && d("voltage") != null) add("laadspanning", d("voltage")!!)
@@ -185,7 +195,9 @@ class TripHealth(saved: JSONObject? = null) {
     fun features(): JSONObject {
         val o = JSONObject()
         for ((k, minN) in MIN_N) {
-            if (single.containsKey(k)) o.put(k, single[k])
+            if (k == "turbo_stabiel") {
+                if (turbo.size >= minN) { val s = turbo.sorted(); o.put(k, (s[s.size / 2] * 100).roundToInt() / 100.0) }
+            } else if (single.containsKey(k)) o.put(k, single[k])
             else if ((n[k] ?: 0) >= minN) o.put(k, ((sum[k]!! / n[k]!!) * 100).roundToInt() / 100.0)
         }
         return o
@@ -193,7 +205,10 @@ class TripHealth(saved: JSONObject? = null) {
 
     fun progress(): JSONObject {
         val o = JSONObject()
-        for ((k, minN) in MIN_N) o.put(k, if (single.containsKey(k)) 1.0 else min(1.0, (n[k] ?: 0).toDouble() / minN))
+        for ((k, minN) in MIN_N) {
+            val cnt = if (k == "turbo_stabiel") turbo.size else (n[k] ?: 0)
+            o.put(k, if (single.containsKey(k)) 1.0 else min(1.0, cnt.toDouble() / minN))
+        }
         return o
     }
 }

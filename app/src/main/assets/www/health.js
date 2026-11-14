@@ -67,7 +67,8 @@
   const FEATURES = {
     koeling: ["Koelvloeistof boven buitentemp. bij hoge last", "°C", 60, +1, 5, 10,
       "Radiator/condensor vrij van stof en insecten? Koelvloeistofniveau, ventilatorkoppeling, waterpomp."],
-    turbo: ["Turbodruk tekort onder last (gevraagd − werkelijk)", "kPa", 30, +1, 8, 15,
+    // mediaan op stabiele vollastmomenten (oude 'turbo' telde drukdips na het schakelen mee)
+    turbo_stabiel: ["Turbodruk tekort bij stabiele vollast", "kPa", 15, +1, 8, 15,
       "Laadluchtslangen en klemmen nalopen (bekend zwak punt), intercooler op lekkage, turboactuator."],
     rail: ["Raildruk-afwijking", "%", 30, +1, 3, 6,
       "Brandstoffilter (vuile diesel!), water in filter, voedingsdruk, hogedrukpomp."],
