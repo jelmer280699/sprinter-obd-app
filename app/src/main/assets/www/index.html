@@ -5,57 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sprinter OBD</title>
 <style>
-:root{--bg:#0b0d10;--card:#151a20;--line:#252c35;--txt:#e8edf2;--dim:#8a96a3;--ok:#2ecc71;--warn:#ff9f1a;--bad:#ff3b30;--accent:#4aa3ff;color-scheme:dark}
+/* Ontwerp "Miles" – tokens: zie design/OVERDRACHT.md. Oude variabelenamen blijven bestaan zodat alle bestaande opmaak meegaat. */
+:root{--bg:#100F0C;--card:#1B1915;--card2:#262219;--navbg:#16140F;--actbg:#2E2A20;--line:#3A3429;--txt:#EEE7D6;--dim:#A89F8A;--na:#6F6858;
+ --ok:#9CAD63;--okbg:#2A3019;--warn:#E2823F;--warnbg:#2A1E12;--bad:#FF4B3A;--badbg:#3A1310;--accent:#D9C49A;--solar:#DDA645;
+ --num:"Barlow Condensed","sans-serif-condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;--sans:Barlow,system-ui,sans-serif;color-scheme:dark}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.3 system-ui,sans-serif}
-header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left))}
-.top{display:flex;align-items:center;gap:10px}
-.top h1{font-size:19px;margin:0}
-#conn{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:8px;color:var(--dim);text-align:right}
-.dot{width:14px;height:14px;border-radius:50%;background:var(--dim);flex:none}
-nav{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none}
-nav::-webkit-scrollbar{display:none}
-nav button{flex:none;background:none;border:1px solid var(--line);color:var(--txt);font-size:16px;padding:9px 14px;border-radius:10px}
-nav button.on{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
-main{padding:12px max(12px,env(safe-area-inset-right)) 24px max(12px,env(safe-area-inset-left))}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.35 var(--sans)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:max(10px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
+.top{display:flex;align-items:center;gap:10px;min-height:44px}
+.top h1{font:600 28px/1.05 var(--num);margin:0}
+#conn{margin-left:auto;font-size:13px;display:flex;align-items:center;gap:8px;color:var(--dim);text-align:right;background:var(--card2);border-radius:18px;padding:7px 12px;max-width:60%}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--na);flex:none}
+.subnav{display:flex;gap:6px;overflow-x:auto;margin-top:10px;scrollbar-width:none}
+.subnav::-webkit-scrollbar{display:none}
+.subnav button{flex:none;background:var(--card);border:1px solid var(--line);color:var(--dim);font:600 15px var(--sans);padding:0 16px;height:44px;border-radius:12px}
+.subnav button.on{background:var(--actbg);border-color:var(--accent);color:var(--accent)}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:6;display:grid;grid-template-columns:repeat(5,1fr);background:var(--navbg);border-top:1px solid var(--line);padding:6px 4px max(8px,env(safe-area-inset-bottom))}
+nav.bottom button{background:none;border:none;color:var(--dim);font:600 11px var(--sans);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;position:relative;padding:0}
+nav.bottom .ic{width:56px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+nav.bottom svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+nav.bottom button.on{color:var(--accent)}nav.bottom button.on .ic{background:var(--actbg)}
+nav.bottom .badge{position:absolute;top:2px;left:calc(50% + 8px);min-width:16px;height:16px;border-radius:8px;background:var(--warn);color:var(--bg);font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px}
+nav.bottom .badge.on{display:flex}nav.bottom .badge.dot{min-width:9px;height:9px;padding:0;top:6px}
+main{padding:6px max(14px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
 section{display:none}section.on{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
-.tile{background:var(--card);border:3px solid var(--line);border-radius:16px;padding:10px 12px;min-height:112px}
-.tile .lbl{color:var(--dim);font-size:15px}
-.tile .val{font-size:42px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;margin-top:4px;white-space:nowrap}
-.tile .unit{font-size:16px;color:var(--dim);font-weight:400;margin-left:3px}
-.tile .sub{font-size:13px;color:var(--dim);margin-top:2px}
-.tile.ok{border-color:var(--ok)}.tile.ok .val{color:var(--ok)}
-.tile.oranje{border-color:var(--warn)}.tile.oranje .val{color:var(--warn)}
-.tile.rood{border-color:var(--bad);background:#2a0f0d}.tile.rood .val{color:var(--bad)}
-.tile.stale .val{opacity:.35}
-.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:10px}
-.chart h3{margin:2px 6px 6px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;min-height:124px}
+.tile .lbl{color:var(--dim);font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.tile .val{font:600 48px/1.05 var(--num);font-variant-numeric:tabular-nums;margin-top:6px;white-space:nowrap}
+.tile .unit{font-size:18px;color:var(--dim);font-weight:500;margin-left:4px}
+.tile .sub{font-size:14px;color:var(--dim);margin-top:4px}
+.tile.oranje{border:3px solid var(--warn);background:var(--warnbg);padding:12px}.tile.oranje .lbl,.tile.oranje .unit{color:var(--warn)}.tile.oranje .sub{color:var(--txt)}
+.tile.rood{border:4px solid var(--bad);background:var(--badbg);padding:11px}.tile.rood .val,.tile.rood .lbl{color:var(--bad)}.tile.rood .sub{color:var(--txt);font-weight:600}
+.tile.stale .val{color:var(--na)}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:12px}
+.chart h3{margin:2px 6px 6px;font:600 20px var(--num)}
 .chart canvas{width:100%;height:190px;display:block}
 .legend span{display:inline-block;margin:0 8px 0 6px;font-size:13px;color:var(--dim)}
 .legend i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
-.card h3{margin:0 0 8px;font-size:17px}
-.btn{font-size:17px;padding:12px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:600}
-.btn.danger{background:var(--bad);color:#fff}
-.btn.ghost{background:none;border:1px solid var(--line);color:var(--txt)}
-.btn.small{font-size:14px;padding:7px 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font:600 22px/1.15 var(--num)}
+.btn{font:600 16px var(--sans);min-height:48px;padding:0 18px;border-radius:12px;border:none;background:var(--accent);color:var(--bg)}
+.btn.danger{background:none;border:2px solid var(--bad);color:var(--bad);font-weight:700}
+.btn.ghost{background:none;border:1px solid var(--accent);color:var(--accent)}
+.btn.small{font-size:14px;min-height:40px;padding:0 12px}
+.btn:disabled{opacity:.4}
 .scroll{overflow-x:auto}
-table{border-collapse:collapse;width:100%}td,th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:15px}
-th{color:var(--dim);font-weight:500;font-size:13px}
-.code{font-weight:700;font-size:19px;color:var(--warn)}
-.tag{display:inline-block;padding:2px 9px;border-radius:8px;font-size:13px;white-space:nowrap}
-.tag.ok{background:#12351f;color:var(--ok)}.tag.no{background:#3a2a0d;color:var(--warn)}.tag.bad{background:#3a0f0d;color:var(--bad)}
+table{border-collapse:collapse;width:100%}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:15px}
+th{color:var(--dim);font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.code{font:700 22px var(--num);letter-spacing:.03em;color:var(--warn)}
+.tag{display:inline-block;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.tag.ok{background:var(--okbg);color:var(--ok)}.tag.no{background:var(--warnbg);color:var(--warn);border:1px solid var(--warn)}.tag.bad{background:var(--badbg);color:var(--bad);border:1px solid var(--bad)}
 .dim{color:var(--dim)}.big{font-size:20px}
-#banner{display:none;background:var(--bad);color:#fff;font-size:19px;font-weight:700;padding:10px 12px;text-align:center}
-#banner2{display:none;background:#3a2a0d;color:var(--warn);font-size:16px;font-weight:600;padding:9px 12px;text-align:center;border-bottom:2px solid var(--warn)}
+#banner{display:none;background:var(--bad);color:var(--bg);font-size:18px;font-weight:700;padding:10px 12px;text-align:center}
+#banner2{display:none;background:var(--warnbg);color:var(--warn);font-size:15px;font-weight:600;padding:9px 12px;text-align:center;border-bottom:2px solid var(--warn)}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
 .bar i{display:block;height:100%;background:var(--accent)}
-input,select,textarea{font-size:17px;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0b0d10;color:var(--txt)}
+input,select,textarea{font-size:17px;padding:10px 12px;min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--txt)}
+input[type=checkbox]{min-height:0;accent-color:var(--ok)}
 textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.78);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
 .modal.on{display:flex}
-.modal .box{background:var(--card);border:2px solid var(--bad);border-radius:16px;padding:18px;max-width:520px;width:100%}
+.modal .box{background:var(--card);border:2px solid var(--bad);border-radius:18px;padding:20px;max-width:520px;width:100%}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:45vh;overflow:auto;color:var(--dim)}
 </style>
@@ -64,19 +75,26 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 <div id="banner"></div>
 <div id="banner2"></div>
 <header>
-  <div class="top"><h1>Sprinter OM651</h1>
+  <div class="top"><h1 id="title">Overzicht</h1>
     <div id="conn"><span id="ctxt">opstarten…</span><span class="dot" id="cdot"></span></div></div>
-  <nav>
+  <div class="subnav" id="sub">
     <button data-s="ov" class="on">Overzicht</button>
     <button data-s="gr">Grafieken</button>
-    <button data-s="dtc">Foutcodes</button>
-    <button data-s="rit">Rit</button>
-    <button data-s="gz">Gezondheid</button>
-    <button data-s="sens">Sensoren</button>
-    <button data-s="set">Instellingen</button>
-  </nav>
+    <button data-s="rit">Trip &amp; verbruik</button>
+    <button data-s="sens">Alle sensoren</button>
+  </div>
 </header>
+<nav class="bottom" aria-label="Hoofdnavigatie">
+  <button data-g="dash" class="on"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg></span>Dashboards</button>
+  <button data-g="miles"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4.4 17.6H2.5V7.2Q2.5 6.5 3.2 6.5H14.5L16.4 7 18.6 11.4 21 12.8Q21.5 13.1 21.5 13.8V17.6H19.4M14.6 17.6H9.2"/><path d="M14.8 8L16.1 11H13.4V8Z M4 8.2H11.6V11H4Z" fill="currentColor" stroke="none"/><circle cx="6.8" cy="17.8" r="2.2"/><circle cx="17" cy="17.8" r="2.2"/></svg></span>Miles<span class="badge dot" id="bMiles"></span></button>
+  <button data-g="en"><span class="ic"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg></span>Energie</button>
+  <button data-g="dtc"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M12 11v4M12 18v.01"/></svg></span>Foutcodes<span class="badge" id="bDtc"></span></button>
+  <button data-g="set"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></span>Instellingen</button>
+</nav>
 <main>
+<section id="en"><div class="grid" id="enTiles"></div>
+  <p class="dim" style="font-size:13px">Voorlopige weergave van de woonaccu, zon en DC-DC-lader. De energiestroom volgt in stap 3.</p></section>
+
 <section id="ov" class="on"><div class="grid" id="tiles"></div><p class="dim" id="logline" style="font-size:13px"></p></section>
 
 <section id="gr">
@@ -182,12 +200,25 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">let op</span>',rood:'<span class="tag bad">controleren</span>',
  basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
-// ---------- tabs ----------
-const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true)};
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
-  document.querySelectorAll("nav button,section").forEach(e=>e.classList.remove("on"));
-  b.classList.add("on");$("#"+b.dataset.s).classList.add("on");loaders[b.dataset.s]?.();
-  try{localStorage.setItem("tab",b.dataset.s)}catch(e){}});
+// ---------- navigatie: 5 hoofdsecties onderin; Dashboards heeft (voorlopig) subtabs ----------
+const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy};
+const GROUPS={dash:["ov","gr","rit","sens"],miles:["gz"],en:["en"],dtc:["dtc"],set:["set"]};
+const TITLES={ov:"Overzicht",gr:"Grafieken",rit:"Trip & verbruik",sens:"Alle sensoren",gz:"Hoe gaat het met Miles?",en:"Energie",dtc:"Foutcodes",set:"Instellingen"};
+let lastDash="ov";
+function show(s){
+  if(!TITLES[s])s="ov";
+  const g=Object.keys(GROUPS).find(k=>GROUPS[k].includes(s));
+  document.querySelectorAll("main>section").forEach(e=>e.classList.toggle("on",e.id===s));
+  document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.g===g));
+  document.querySelectorAll("#sub button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
+  $("#sub").style.display=g==="dash"?"flex":"none";
+  $("#title").textContent=TITLES[s];
+  if(g==="dash")lastDash=s;
+  loaders[s]?.();scrollTo(0,0);
+  try{localStorage.setItem("tab",s)}catch(e){}
+}
+document.querySelectorAll("#sub button").forEach(b=>b.onclick=()=>show(b.dataset.s));
+document.querySelectorAll("nav.bottom button").forEach(b=>b.onclick=()=>show(b.dataset.g==="dash"?lastDash:GROUPS[b.dataset.g][0]));
 
 // ---------- modaal venster (vervangt confirm/alert) ----------
 function ask(title,body,yes,{check=false}={}){
@@ -272,12 +303,26 @@ function tick(){
   const ond=Object.values(S.healthEval.kengetallen||{}).filter(i=>i.status==="oranje"||i.status==="rood").map(i=>`${i.status==="rood"?"Controleren":"Let op"}: ${i.naam}`);
   const m06=(S.healthEval.mode06||[]).filter(m=>m.status!=="ok").map(m=>`Mode 06: ${m.naam}`);
   const b2=[...S.dtcAlert.map(a=>`Nieuwe ${a.soort} foutcode ${a.code}`),...ond,...m06];
-  $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?"🔧 "+b2.join(" · ")+" — tik voor details":"";
+  $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?b2.join(" · ")+" — tik voor details":"";
+  $("#bMiles").classList.toggle("on",b2.length>0);
+  const nCodes=v.dtc_count||S.dtcAlert.length||0;
+  $("#bDtc").classList.toggle("on",nCodes>0);$("#bDtc").textContent=nCodes||"";
   $("#logline").textContent=(S.tripActive?`Rit loopt · log: ${S.logfile}`:"Geen rit actief: start automatisch zodra de motor draait")+
     (c.multi!=null?` · multi-PID ${c.multi?"ja":"nee"}`:"")+(c.sessies?` · verbindingen ${c.sessies}, onderbrekingen ${c.onderbrekingen}, opgevangen haperingen ${c.hersteld||0}`:"");
   if($("#rit").classList.contains("on"))renderTrip();
 }
-$("#banner2").onclick=()=>document.querySelector('nav button[data-s="gz"]').click();
+$("#banner2").onclick=()=>show("gz");
+
+// ---------- energie (voorlopig: tegels; energiestroom volgt in stap 3) ----------
+const ENERGY=["shunt_soc","shunt_v","shunt_a","shunt_rest_min","mppt_w","mppt_yield_wh","orion_out_a","orion_state","voltage"];
+function renderEnergy(){
+  if(!$("#en").classList.contains("on"))return;
+  const v=S.values;
+  $("#enTiles").innerHTML=ENERGY.filter(k=>SMAP[k]).map(k=>{const [,n,u,d]=SMAP[k],x=v[k],age=S.age[k];
+    const val=x==null?"–":typeof x==="number"?fmt(x,d):`<span style="font-size:22px">${esc(x)}</span>`;
+    return `<div class="tile${x==null||(age!=null&&age>15)?" stale":""}"><div class="lbl">${n}</div><div class="val">${val}<span class="unit">${typeof x==="string"?"":u}</span></div></div>`}).join("");
+}
+setInterval(renderEnergy,1000);
 setInterval(tick,400);
 
 // ---------- grafieken ----------
@@ -490,7 +535,7 @@ $("#backupBtn").onclick=()=>{
 
 // ---------- start ----------
 // De app start de meetdienst zelf bij openen (na toestemming). Hier alleen de laatst gekozen tab herstellen.
-try{const t=localStorage.getItem("tab");if(t)document.querySelector(`nav button[data-s="${t}"]`)?.click()}catch(e){}
+{let t="ov";try{t=localStorage.getItem("tab")||"ov"}catch(e){}show(t)}
 if(!Native.hasPermission())S.conn.error="Bluetooth-toestemming nodig";
 </script>
 </body>
