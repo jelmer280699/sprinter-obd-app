@@ -63,8 +63,8 @@ class MainActivity : Activity(), Core.Listener {
     }
 
     private fun perms(): Array<String> = if (android.os.Build.VERSION.SDK_INT >= 33)
-        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
-    else arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
+        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.POST_NOTIFICATIONS)
+    else arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
 
     private fun hasBt() = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
     private fun hasPerms() = perms().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
@@ -74,6 +74,7 @@ class MainActivity : Activity(), Core.Listener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         emit("onEvent", "permissie", if (hasBt()) "ok" else "geweigerd")
         if (hasBt()) startAndBind()
+        svc?.core?.startOrion()   // scantoestemming kan net verleend zijn
     }
 
     private fun startAndBind() {
@@ -133,6 +134,7 @@ class MainActivity : Activity(), Core.Listener {
                         "addTank" -> c.addTank(arg.replace(',', '.').toDouble()).toString()
                         "setCfg" -> { c.setCfg(arg); "{}" }
                         "setDevice" -> { c.setDevice(arg); "{}" }
+                        "setOrion" -> { c.setOrion(arg); "{}" }
                         else -> throw IllegalArgumentException("Onbekende actie $name")
                     }
                     emitResult(id, true, res)

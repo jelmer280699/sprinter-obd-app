@@ -42,7 +42,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         private val ONZEKER = listOf("85", "88", "92")            // [niet geverifieerd], alleen als aangezet
         val LOG_KEYS = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_cmd", "boost_act", "boost_dev",
             "rail_cmd", "rail_act", "rail_dev", "maf", "lambda", "fuel_lph", "l100", "throttle", "pedal", "baro", "runtime",
-            "pedal_pct", "pedal_e", "throttle_cmd")
+            "pedal_pct", "pedal_e", "throttle_cmd", "orion_in_v", "orion_in_a", "orion_out_v", "orion_out_a", "orion_state")
         val REF = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_act", "boost_cmd",
             "rail_act", "rail_cmd", "maf", "lambda", "throttle", "pedal", "baro", "runtime")
         private const val DIESEL_AFR = 14.5; private const val DIESEL_KG_L = 0.835
@@ -89,6 +89,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             if (s.has("did_onderzoek")) d.put("did_onderzoek", s.getBoolean("did_onderzoek"))
             if (s.has("dev")) d.put("dev", s.getString("dev"))
             if (s.has("onzeker")) d.put("onzeker", s.getBoolean("onzeker"))
+            if (s.has("orion_mac")) d.put("orion_mac", s.getString("orion_mac"))
             s.optJSONObject("alarms")?.let { a -> val da = d.getJSONObject("alarms"); a.keys().forEach { da.put(it, a.get(it)) } }
             // Oude standaard accugrenzen (12,8/12,4 zonder duur) vervangen door de nieuwe; zelf aangepaste blijven staan.
             val v = d.getJSONObject("alarms").getJSONObject("voltage")
@@ -107,14 +108,53 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private fun d(k: String) = values[k] as? Double
 
     // ---------------- verbinding ----------------
+    // ---------------- Victron Orion XS (Bluetooth LE, alleen luisteren) ----------------
+    private val geheim = ctx.getSharedPreferences("geheim", Context.MODE_PRIVATE)  // sleutel: niet in back-up of getData
+    private val victron = Victron(ctx, { orionUpdate(it) }, { msg -> values["orion_status"] = msg; ui.onEvent("orion", msg) })
+    private var lastOrion = 0L
+
+    fun startOrion() {
+        val mac = Victron.normMac(cfg.optString("orion_mac", "")) ?: return
+        val key = Victron.hexKey(geheim.getString("orion_key", "") ?: "") ?: return
+        values["orion_status"] = if (victron.start(mac, key)) "luisteren naar $mac" else "kon niet starten"
+    }
+
+    @Synchronized
+    private fun orionUpdate(m: Map<String, Any>) {
+        val now = System.currentTimeMillis()
+        for ((k, v) in m) { values[k] = v; updated[k] = now }
+        values["orion_status"] = "ontvangen"
+        // Geladen Ah naar de woonaccu tijdens de rit
+        val a = m["orion_out_a"] as? Double
+        if (tripActive && a != null && lastOrion > 0) {
+            val dt = min((now - lastOrion) / 1000.0, 10.0)
+            trip.put("orion_ah", trip.optDouble("orion_ah", 0.0) + a * dt / 3600)
+        }
+        lastOrion = now
+    }
+
+    fun setOrion(json: String) {
+        val s = JSONObject(json)
+        val mac = Victron.normMac(s.optString("mac", "")) ?: throw IllegalArgumentException("MAC-adres onjuist (12 tekens hex)")
+        val keyTxt = s.optString("key", "").trim()
+        if (keyTxt.isNotEmpty()) {
+            Victron.hexKey(keyTxt) ?: throw IllegalArgumentException("Sleutel onjuist (32 tekens hex)")
+            geheim.edit().putString("orion_key", keyTxt).apply()
+        } else if (geheim.getString("orion_key", "").isNullOrEmpty()) throw IllegalArgumentException("Sleutel ontbreekt")
+        store.set("cfg", cfg.put("orion_mac", mac).toString())
+        startOrion()
+    }
+
     fun start() {
         if (want) return
         want = true
+        startOrion()
         worker = Thread({ runLoop() }, "obd-core").apply { isDaemon = true; start() }
     }
 
     fun stop() {
         want = false
+        victron.stop()
         closeSocket()
         endTrip("gestopt")
         flushLogs()
@@ -512,6 +552,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             .put("stationair_s", t.getDouble("stationair_s").roundToInt()).put("brandstof_l", (l * 100).roundToInt() / 100.0)
             .put("l100", if (km > 1) (l / km * 1000).roundToInt() / 10.0 else JSONObject.NULL)
             .put("max", t.getJSONObject("max")).put("alarmen", t.getJSONObject("alarmen"))
+            .put("orion_ah", if (t.has("orion_ah")) (t.getDouble("orion_ah") * 10).roundToInt() / 10.0 else JSONObject.NULL)
     }
 
     private fun upsert(name: String, start: Long, obj: JSONObject, keep: Int) {
@@ -561,7 +602,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
                 .put("sessies", sessies).put("onderbrekingen", onderbrekingen).put("hersteld", hersteld))
             .put("tripActive", tripActive).put("trip", if (tripActive) tripSummary(trip) else JSONObject.NULL)
             .put("health_features", health.features()).put("health_progress", health.progress())
-            .put("dtcAlert", dtcAlert).put("logfile", logfile).put("tank", tank).put("cfg", cfg).toString()
+            .put("dtcAlert", dtcAlert).put("logfile", logfile).put("tank", tank)
+            .put("cfg", JSONObject(cfg.toString()).put("orion_key_set", !geheim.getString("orion_key", "").isNullOrEmpty())).toString()
     }
 
     fun historyJson(): String = synchronized(history) { JSONArray(history.toList()).toString() }

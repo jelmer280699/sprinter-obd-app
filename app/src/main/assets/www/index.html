@@ -142,6 +142,14 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
       (Mijn bestanden → Downloads → SprinterOBD). Hieronder zie je per bestand of dat gelukt is.</p>
     <div class="row" style="margin-bottom:8px"><button class="btn ghost" id="expAll">Alles exporteren wat nog niet geëxporteerd is</button><span class="dim" id="expMsg"></span></div>
     <div class="scroll"><table id="files"></table></div></div>
+  <div class="card"><h3>Victron Orion XS</h3>
+    <p class="dim">De app luistert alleen mee met de Bluetooth-uitzending van de Orion ("Onmiddellijk uitlezen via Bluetooth"); hij maakt
+      geen verbinding en stuurt niets. Gegevens staan in VictronConnect → Orion → ⚙ → Productinformatie → Encryptie gegevens.
+      De sleutel blijft op deze telefoon en gaat niet mee in back-ups.</p>
+    <div class="row" style="margin-bottom:8px"><input id="orMac" placeholder="MAC-adres" style="width:100%" autocomplete="off" spellcheck="false"></div>
+    <div class="row" style="margin-bottom:8px"><input id="orKey" type="password" placeholder="encryptiesleutel" style="width:100%" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><button class="btn" id="orSave">Opslaan</button><span class="dim" id="orMsg"></span></div>
+    <p class="dim" id="orStat" style="margin-bottom:0"></p></div>
   <div class="card"><h3>DID-onderzoek (Mercedes Mode 22)</h3>
     <label class="row"><input type="checkbox" id="didOn" style="width:22px;height:22px"> Tijdens het rijden telkens één van de 108 live-DID's meelezen en loggen</label></div>
   <div class="card"><h3>Alarmgrenzen</h3>
@@ -205,6 +213,10 @@ const SENSORS=[
  ["speed","Snelheid","km/u",0,"Rijden"],["pedal_pct","Gaspedaal","%",0,"Rijden"],["pedal","Gaspedaal sensor D (ruw)","%",1,"Rijden"],
  ["pedal_e","Gaspedaal sensor E (ruw)","%",1,"Rijden"],
  ["ambient","Buitentemperatuur","°C",0,"Omgeving"],["baro","Luchtdruk","kPa",0,"Omgeving"],
+ ["orion_in_v","Orion ingangsspanning","V",2,"Orion XS (woonaccu)"],["orion_in_a","Orion ingangsstroom","A",1,"Orion XS (woonaccu)"],
+ ["orion_out_v","Orion uitgangsspanning","V",2,"Orion XS (woonaccu)"],["orion_out_a","Orion laadstroom woonaccu","A",1,"Orion XS (woonaccu)"],
+ ["orion_state","Orion laadfase","",0,"Orion XS (woonaccu)"],["orion_off","Orion uit-reden","",0,"Orion XS (woonaccu)"],
+ ["orion_raw","Orion ruwe data (controle)","",0,"Orion XS (woonaccu)"],
  ["dist_clr","Afstand sinds codes gewist","km",0,"Tellers"],["dist_mil","Afstand met motorlampje aan","km",0,"Tellers"],["warmups","Opwarmcycli sinds wissen","",0,"Tellers"],
  ["adblue_ruw","AdBlue/NOx-reagens (ruw)","",0,"[niet geverifieerd]",1],["scr_ruw","SCR-inducement (ruw)","",0,"[niet geverifieerd]",1],
  ["brandstofsys_ruw","Brandstofsysteemregeling (ruw)","",0,"[niet geverifieerd]",1]];
@@ -326,6 +338,7 @@ function renderTrip(){
   const t=S.trip,m=t.max;
   const rit=[["Afstand",fmt(t.afstand_km,1),"km"],["Brandstof [sch.]",fmt(t.brandstof_l,1),"L"],
    ["Gem. verbruik [sch.]",t.afstand_km>1?fmt(t.brandstof_l/t.afstand_km*100,1):"–","L/100"],["Alarmen or./rood",`${t.alarmen.oranje}/${t.alarmen.rood}`,""],
+   ["Geladen woonaccu (Orion)",t.orion_ah!=null?fmt(t.orion_ah,1):"–","Ah"],
    ["Rijtijd",hm(t.rijtijd_s),"u:m"],["Stationair",hm(t.stationair_s),"u:m"],
    ["Gem. snelheid",t.rijtijd_s>0?fmt(t.afstand_km/(t.rijtijd_s/3600),0):"–","km/u"],["Max koelvloeistof",fmt(m.coolant,0),"°C"],
    ["Max olie",fmt(m.oil,0),"°C"],["Max inlaatlucht",fmt(m.iat,0),"°C"],["Max turbodruk",fmt(m.boost_act,0),"kPa"],["Max toerental",fmt(m.rpm,0),"rpm"]];
@@ -334,9 +347,9 @@ function renderTrip(){
 function loadRitten(){
   renderTrip();
   const ritten=APP.store.get("ritten",[]).filter(r=>!S.trip||r._start!==S.trip._start);if(S.trip)ritten.push({...S.trip,huidig:true});
-  $("#ritten").innerHTML="<tr><th>Start</th><th>km</th><th>Rijtijd</th><th>Stat.</th><th>L</th><th>L/100</th><th>Max kv/olie/inl</th><th>Alarmen</th></tr>"+
+  $("#ritten").innerHTML="<tr><th>Start</th><th>km</th><th>Rijtijd</th><th>Stat.</th><th>L</th><th>L/100</th><th>Max kv/olie/inl</th><th>Orion Ah</th><th>Alarmen</th></tr>"+
    ritten.reverse().map(x=>`<tr${x.huidig?' style="color:var(--accent)"':""}><td>${x.start}${x.huidig?" (nu)":""}</td><td>${fmt(x.afstand_km,1)}</td><td>${hm(x.rijtijd_s)}</td><td>${hm(x.stationair_s)}</td>
-   <td>${fmt(x.brandstof_l,1)}</td><td>${x.l100??"–"}</td><td>${x.max.coolant??"–"}/${x.max.oil??"–"}/${x.max.iat??"–"}</td>
+   <td>${fmt(x.brandstof_l,1)}</td><td>${x.l100??"–"}</td><td>${x.max.coolant??"–"}/${x.max.oil??"–"}/${x.max.iat??"–"}</td><td>${x.orion_ah!=null?fmt(x.orion_ah,1):"–"}</td>
    <td>${x.alarmen.oranje?`<span class="tag no">${x.alarmen.oranje}</span> `:""}${x.alarmen.rood?`<span class="tag bad">${x.alarmen.rood}</span>`:""}${!x.alarmen.oranje&&!x.alarmen.rood?'<span class="tag ok">geen</span>':""}</td></tr>`).join("");
   const T=S.tank,b=T.tankbeurten||[];
   $("#tankInfo").innerHTML=`Kalibratiefactor: <b>×${T.factor}</b>${b.some(x=>x.factor)?"":" (nog niet gekalibreerd)"} · geschat sinds laatste tankbeurt: ${fmt((T.sinds_tank_raw_l||0)*T.factor,1)} L`+
@@ -416,6 +429,10 @@ function loadSettings(){
   const c=S.conn.info||{};
   $("#connInfo").textContent=[c.elm,c.proto,c.vin].filter(Boolean).join(" · ");
   $("#didOn").checked=APP.CFG.did_onderzoek;
+  if(document.activeElement!==$("#orMac"))$("#orMac").value=APP.CFG.orion_mac||"";
+  $("#orKey").placeholder=APP.CFG.orion_key_set?"sleutel ingesteld (leeg laten = behouden)":"encryptiesleutel (32 tekens)";
+  const oa=S.age.orion_in_v;
+  $("#orStat").textContent="Status: "+(S.values.orion_status||"niet ingesteld")+(oa!=null?` · laatste ontvangst ${Math.round(oa)} s geleden`:"");
   $("#cfgTxt").value=JSON.stringify(APP.CFG.alarms,null,1);
   $("#evlog").textContent=evlog.join("\n");
   const files=JSON.parse(Native.listFiles());
@@ -433,6 +450,10 @@ $("#files").onclick=async e=>{
     closeModal();Native.deleteFile(d);loadSettings()}
 };
 $("#dev").onchange=e=>APP.setDevice(e.target.value);
+$("#orSave").onclick=async()=>{
+  $("#orMsg").textContent="bezig…";
+  try{await APP.setOrion($("#orMac").value,$("#orKey").value);$("#orKey").value="";$("#orMsg").textContent="Opgeslagen, luisteren gestart";APP.poll();setTimeout(loadSettings,500)}
+  catch(e){$("#orMsg").textContent="Niet opgeslagen: "+e.message}};
 $("#connBtn").onclick=()=>{if(!Native.hasPermission()){Native.requestPermission();return}APP.run()};
 $("#stopBtn").onclick=()=>APP.stop();
 $("#batBtn").onclick=()=>Native.askBattery();

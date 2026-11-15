@@ -3,6 +3,9 @@
 
     <!-- Verbinden met gekoppelde Bluetooth-apparaten (geen scannen, geen locatie) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Victron Orion XS: alleen meeluisteren met Bluetooth LE-advertenties; nooit voor locatie -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"
+        xmlns:tools="http://schemas.android.com/tools" tools:targetApi="s" />
     <!-- Achtergrondmeting: voorgronddienst + CPU wakker houden met scherm uit -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
