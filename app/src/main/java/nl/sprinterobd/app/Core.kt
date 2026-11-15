@@ -42,7 +42,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         private val ONZEKER = listOf("85", "88", "92")            // [niet geverifieerd], alleen als aangezet
         val LOG_KEYS = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_cmd", "boost_act", "boost_dev",
             "rail_cmd", "rail_act", "rail_dev", "maf", "lambda", "fuel_lph", "l100", "throttle", "pedal", "baro", "runtime",
-            "pedal_pct", "pedal_e", "throttle_cmd", "orion_in_v", "orion_in_a", "orion_out_v", "orion_out_a", "orion_state")
+            "pedal_pct", "pedal_e", "throttle_cmd", "orion_in_v", "orion_in_a", "orion_out_v", "orion_out_a", "orion_state",
+            "shunt_soc", "shunt_v", "shunt_a", "shunt_starter_v", "mppt_w", "mppt_a", "mppt_yield_wh")
         val REF = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_act", "boost_cmd",
             "rail_act", "rail_cmd", "maf", "lambda", "throttle", "pedal", "baro", "runtime")
         private const val DIESEL_AFR = 14.5; private const val DIESEL_KG_L = 0.835
@@ -108,47 +109,89 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private fun d(k: String) = values[k] as? Double
 
     // ---------------- verbinding ----------------
-    // ---------------- Victron Orion XS (Bluetooth LE, alleen luisteren) ----------------
-    private val geheim = ctx.getSharedPreferences("geheim", Context.MODE_PRIVATE)  // sleutel: niet in back-up of getData
-    private val victron = Victron(ctx, { orionUpdate(it) }, { msg -> values["orion_status"] = msg; ui.onEvent("orion", msg) })
+    // ---------------- Victron (Orion XS, SmartShunt, MPPT) via Bluetooth LE, alleen luisteren ----------------
+    // Sleutels in eigen SharedPreferences: niet via getData, niet in back-ups, niet in de repository.
+    private val geheim = ctx.getSharedPreferences("geheim", Context.MODE_PRIVATE)
+    private val victron = Victron(ctx, { mac, m -> victronUpdate(mac, m) }, { mac, msg -> vStatus(mac, msg) })
     private var lastOrion = 0L
+    private val vInfo = ConcurrentHashMap<String, JSONObject>()        // MAC -> {type, status, laatst}
+    private val mppts = ConcurrentHashMap<String, Map<String, Any>>()  // MAC -> laatste MPPT-waarden (voor optellen)
 
-    fun startOrion() {
-        val mac = Victron.normMac(cfg.optString("orion_mac", "")) ?: return
-        val key = Victron.hexKey(geheim.getString("orion_key", "") ?: "") ?: return
-        values["orion_status"] = if (victron.start(mac, key)) "luisteren naar $mac" else "kon niet starten"
+    private fun keys(): JSONObject {
+        val k = try { JSONObject(geheim.getString("victron_keys", "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+        // Eenmalig: oude Orion-instelling (build 17) overnemen
+        val oldMac = Victron.normMac(cfg.optString("orion_mac", "")); val oldKey = geheim.getString("orion_key", "") ?: ""
+        if (oldMac != null && oldKey.isNotEmpty() && !k.has(oldMac)) {
+            k.put(oldMac, oldKey); geheim.edit().putString("victron_keys", k.toString()).remove("orion_key").apply()
+        }
+        return k
+    }
+
+    private fun vStatus(mac: String, msg: String) {
+        if (mac.isEmpty()) { values["victron_status"] = msg; ui.onEvent("victron", msg); return }
+        vInfo.getOrPut(mac) { JSONObject() }.put("status", msg)
+    }
+
+    fun startVictron() {
+        val k = keys(); val devs = HashMap<String, ByteArray>()
+        for (mac in k.keys()) Victron.hexKey(k.getString(mac))?.let { devs[mac] = it }
+        for (mac in devs.keys) vInfo.getOrPut(mac) { JSONObject().put("status", "luisteren…") }
+        values["victron_status"] = if (devs.isEmpty()) "geen apparaten" else if (victron.start(devs)) "luisteren naar ${devs.size} apparaat/apparaten" else "kon niet starten"
     }
 
     @Synchronized
-    private fun orionUpdate(m: Map<String, Any>) {
+    private fun victronUpdate(mac: String, m: Map<String, Any>) {
         val now = System.currentTimeMillis()
-        for ((k, v) in m) { values[k] = v; updated[k] = now }
-        values["orion_status"] = "ontvangen"
-        // Geladen Ah naar de woonaccu tijdens de rit
-        val a = m["orion_out_a"] as? Double
-        if (tripActive && a != null && lastOrion > 0) {
-            val dt = min((now - lastOrion) / 1000.0, 10.0)
-            trip.put("orion_ah", trip.optDouble("orion_ah", 0.0) + a * dt / 3600)
+        val type = m["type"] as? String ?: return
+        vInfo.getOrPut(mac) { JSONObject() }.put("type", type).put("status", "ontvangen").put("laatst", now)
+        fun put(k: String, v: Any) { values[k] = v; updated[k] = now }
+        when (type) {
+            "orion" -> {
+                for ((k, v) in m) if (k != "type") put(if (k == "ruw") "orion_raw" else "orion_$k", v)
+                // Geladen Ah naar de woonaccu tijdens de rit
+                val a = m["out_a"] as? Double
+                if (tripActive && a != null && lastOrion > 0) {
+                    val dt = min((now - lastOrion) / 1000.0, 10.0)
+                    trip.put("orion_ah", trip.optDouble("orion_ah", 0.0) + a * dt / 3600)
+                }
+                lastOrion = now
+            }
+            "shunt" -> for ((k, v) in m) if (k != "type") put(if (k == "ruw") "shunt_raw" else "shunt_$k", v)
+            "mppt" -> {
+                mppts[mac] = m
+                // Meerdere laadregelaars: vermogen, stroom en dagopbrengst optellen
+                val all = mppts.values
+                put("mppt_w", all.sumOf { (it["w"] as? Double) ?: 0.0 })
+                put("mppt_a", all.sumOf { (it["a"] as? Double) ?: 0.0 })
+                put("mppt_yield_wh", all.sumOf { (it["yield_wh"] as? Double) ?: 0.0 })
+                (m["v"] as? Double)?.let { put("mppt_v", it) }
+                (m["state"] as? String)?.let { put("mppt_state", it) }
+                (m["load_a"] as? Double)?.let { put("mppt_load_a", it) }
+                (m["ruw"] as? String)?.let { put("mppt_raw", it) }
+                put("mppt_aantal", all.size.toDouble())
+            }
         }
-        lastOrion = now
     }
 
-    fun setOrion(json: String) {
+    /** Apparaat toevoegen/bijwerken (sleutel leeg = bestaande behouden) of verwijderen. */
+    fun setVictron(json: String) {
         val s = JSONObject(json)
         val mac = Victron.normMac(s.optString("mac", "")) ?: throw IllegalArgumentException("MAC-adres onjuist (12 tekens hex)")
-        val keyTxt = s.optString("key", "").trim()
-        if (keyTxt.isNotEmpty()) {
-            Victron.hexKey(keyTxt) ?: throw IllegalArgumentException("Sleutel onjuist (32 tekens hex)")
-            geheim.edit().putString("orion_key", keyTxt).apply()
-        } else if (geheim.getString("orion_key", "").isNullOrEmpty()) throw IllegalArgumentException("Sleutel ontbreekt")
-        store.set("cfg", cfg.put("orion_mac", mac).toString())
-        startOrion()
+        val k = keys()
+        if (s.optBoolean("verwijderen")) { k.remove(mac); vInfo.remove(mac); mppts.remove(mac) }
+        else {
+            val keyTxt = s.optString("key", "").trim()
+            if (keyTxt.isNotEmpty()) { Victron.hexKey(keyTxt) ?: throw IllegalArgumentException("Sleutel onjuist (32 tekens hex)"); k.put(mac, keyTxt) }
+            else if (!k.has(mac)) throw IllegalArgumentException("Sleutel ontbreekt")
+        }
+        geheim.edit().putString("victron_keys", k.toString()).apply()
+        startVictron()
     }
 
     fun start() {
         if (want) return
         want = true
-        startOrion()
+        startVictron()
         worker = Thread({ runLoop() }, "obd-core").apply { isDaemon = true; start() }
     }
 
@@ -603,7 +646,16 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             .put("tripActive", tripActive).put("trip", if (tripActive) tripSummary(trip) else JSONObject.NULL)
             .put("health_features", health.features()).put("health_progress", health.progress())
             .put("dtcAlert", dtcAlert).put("logfile", logfile).put("tank", tank)
-            .put("cfg", JSONObject(cfg.toString()).put("orion_key_set", !geheim.getString("orion_key", "").isNullOrEmpty())).toString()
+            .put("cfg", cfg)
+            .put("victron", JSONArray().also { arr ->
+                val k = keys()
+                for (mac in k.keys()) {
+                    val i = vInfo[mac]
+                    arr.put(JSONObject().put("mac", mac).put("type", i?.optString("type", "") ?: "")
+                        .put("status", i?.optString("status", "") ?: "")
+                        .put("leeftijd_s", i?.optLong("laatst", 0L)?.takeIf { it > 0 }?.let { (now - it) / 1000 } ?: JSONObject.NULL))
+                }
+            }).toString()
     }
 
     fun historyJson(): String = synchronized(history) { JSONArray(history.toList()).toString() }

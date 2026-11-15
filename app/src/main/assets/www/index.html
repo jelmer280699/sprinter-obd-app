@@ -142,12 +142,14 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
       (Mijn bestanden → Downloads → SprinterOBD). Hieronder zie je per bestand of dat gelukt is.</p>
     <div class="row" style="margin-bottom:8px"><button class="btn ghost" id="expAll">Alles exporteren wat nog niet geëxporteerd is</button><span class="dim" id="expMsg"></span></div>
     <div class="scroll"><table id="files"></table></div></div>
-  <div class="card"><h3>Victron Orion XS</h3>
-    <p class="dim">De app luistert alleen mee met de Bluetooth-uitzending van de Orion ("Onmiddellijk uitlezen via Bluetooth"); hij maakt
-      geen verbinding en stuurt niets. Gegevens staan in VictronConnect → Orion → ⚙ → Productinformatie → Encryptie gegevens.
-      De sleutel blijft op deze telefoon en gaat niet mee in back-ups.</p>
+  <div class="card"><h3>Victron-apparaten (Orion XS, SmartShunt, MPPT)</h3>
+    <p class="dim">De app luistert alleen mee met de Bluetooth-uitzending ("Onmiddellijk uitlezen via Bluetooth"); hij maakt geen
+      verbinding en stuurt niets. Per apparaat: VictronConnect → apparaat → ⚙ → Productinformatie → Encryptie gegevens.
+      Het type herkent de app zelf. Sleutels blijven op deze telefoon en gaan niet mee in back-ups.</p>
+    <div class="scroll"><table id="vicTab"></table></div>
+    <h3 style="margin-top:12px">Apparaat toevoegen of sleutel wijzigen</h3>
     <div class="row" style="margin-bottom:8px"><input id="orMac" placeholder="MAC-adres" style="width:100%" autocomplete="off" spellcheck="false"></div>
-    <div class="row" style="margin-bottom:8px"><input id="orKey" type="password" placeholder="encryptiesleutel" style="width:100%" autocomplete="off" spellcheck="false"></div>
+    <div class="row" style="margin-bottom:8px"><input id="orKey" type="password" placeholder="encryptiesleutel (32 tekens)" style="width:100%" autocomplete="off" spellcheck="false"></div>
     <div class="row"><button class="btn" id="orSave">Opslaan</button><span class="dim" id="orMsg"></span></div>
     <p class="dim" id="orStat" style="margin-bottom:0"></p></div>
   <div class="card"><h3>DID-onderzoek (Mercedes Mode 22)</h3>
@@ -217,6 +219,15 @@ const SENSORS=[
  ["orion_out_v","Orion uitgangsspanning","V",2,"Orion XS (woonaccu)"],["orion_out_a","Orion laadstroom woonaccu","A",1,"Orion XS (woonaccu)"],
  ["orion_state","Orion laadfase","",0,"Orion XS (woonaccu)"],["orion_off","Orion uit-reden","",0,"Orion XS (woonaccu)"],
  ["orion_raw","Orion ruwe data (controle)","",0,"Orion XS (woonaccu)"],
+ ["shunt_soc","Woonaccu lading","%",1,"SmartShunt (woonaccu)"],["shunt_v","Woonaccu spanning","V",2,"SmartShunt (woonaccu)"],
+ ["shunt_a","Woonaccu stroom (+ laden / − ontladen)","A",2,"SmartShunt (woonaccu)"],["shunt_verbruikt_ah","Verbruikt","Ah",1,"SmartShunt (woonaccu)"],
+ ["shunt_rest_min","Resterende tijd","min",0,"SmartShunt (woonaccu)"],["shunt_starter_v","Startaccu (hulpingang)","V",2,"SmartShunt (woonaccu)"],
+ ["shunt_temp_c","Accutemperatuur (hulpingang)","°C",1,"SmartShunt (woonaccu)"],["shunt_midpoint_v","Middenpuntspanning","V",2,"SmartShunt (woonaccu)"],
+ ["shunt_raw","SmartShunt ruwe data (controle)","",0,"SmartShunt (woonaccu)"],
+ ["mppt_w","Zonnepanelen vermogen","W",0,"Zonnepanelen (MPPT)"],["mppt_yield_wh","Opbrengst vandaag","Wh",0,"Zonnepanelen (MPPT)"],
+ ["mppt_a","Laadstroom zon","A",1,"Zonnepanelen (MPPT)"],["mppt_v","Accuspanning (MPPT)","V",2,"Zonnepanelen (MPPT)"],
+ ["mppt_state","Laadfase zon","",0,"Zonnepanelen (MPPT)"],["mppt_load_a","Belastingsuitgang","A",1,"Zonnepanelen (MPPT)"],
+ ["mppt_raw","MPPT ruwe data (controle)","",0,"Zonnepanelen (MPPT)"],
  ["dist_clr","Afstand sinds codes gewist","km",0,"Tellers"],["dist_mil","Afstand met motorlampje aan","km",0,"Tellers"],["warmups","Opwarmcycli sinds wissen","",0,"Tellers"],
  ["adblue_ruw","AdBlue/NOx-reagens (ruw)","",0,"[niet geverifieerd]",1],["scr_ruw","SCR-inducement (ruw)","",0,"[niet geverifieerd]",1],
  ["brandstofsys_ruw","Brandstofsysteemregeling (ruw)","",0,"[niet geverifieerd]",1]];
@@ -429,10 +440,7 @@ function loadSettings(){
   const c=S.conn.info||{};
   $("#connInfo").textContent=[c.elm,c.proto,c.vin].filter(Boolean).join(" · ");
   $("#didOn").checked=APP.CFG.did_onderzoek;
-  if(document.activeElement!==$("#orMac"))$("#orMac").value=APP.CFG.orion_mac||"";
-  $("#orKey").placeholder=APP.CFG.orion_key_set?"sleutel ingesteld (leeg laten = behouden)":"encryptiesleutel (32 tekens)";
-  const oa=S.age.orion_in_v;
-  $("#orStat").textContent="Status: "+(S.values.orion_status||"niet ingesteld")+(oa!=null?` · laatste ontvangst ${Math.round(oa)} s geleden`:"");
+  renderVictron();
   $("#cfgTxt").value=JSON.stringify(APP.CFG.alarms,null,1);
   $("#evlog").textContent=evlog.join("\n");
   const files=JSON.parse(Native.listFiles());
@@ -450,9 +458,21 @@ $("#files").onclick=async e=>{
     closeModal();Native.deleteFile(d);loadSettings()}
 };
 $("#dev").onchange=e=>APP.setDevice(e.target.value);
+const VTYPE={orion:"Orion XS",shunt:"SmartShunt",mppt:"MPPT (zon)","":"nog niets ontvangen"};
+function renderVictron(){
+  const list=S.victron||[];
+  $("#vicTab").innerHTML=list.length?"<tr><th>Apparaat</th><th>Status</th><th></th></tr>"+list.map(d=>
+    `<tr><td>${VTYPE[d.type]??d.type}<br><span class="dim">${d.mac}</span></td><td>${esc(d.status||"–")}${d.leeftijd_s!=null?`<br><span class="dim">${d.leeftijd_s} s geleden</span>`:""}</td>
+     <td><button class="btn small ghost" data-vdel="${d.mac}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen apparaten.</td></tr>';
+  $("#orStat").textContent=S.values.victron_status?"Scanner: "+S.values.victron_status:"";
+}
+setInterval(()=>{if($("#set").classList.contains("on"))renderVictron()},1000);
+$("#vicTab").onclick=async e=>{const m=e.target.dataset.vdel;if(!m)return;
+  if(!await ask("Apparaat verwijderen?",`<p>${m} en de bijbehorende sleutel worden van deze telefoon verwijderd.</p>`,"Ja, verwijderen"))return;
+  closeModal();try{await APP.setVictron(m,"",true)}catch(x){}APP.poll();setTimeout(renderVictron,400)};
 $("#orSave").onclick=async()=>{
   $("#orMsg").textContent="bezig…";
-  try{await APP.setOrion($("#orMac").value,$("#orKey").value);$("#orKey").value="";$("#orMsg").textContent="Opgeslagen, luisteren gestart";APP.poll();setTimeout(loadSettings,500)}
+  try{await APP.setVictron($("#orMac").value,$("#orKey").value);$("#orKey").value="";$("#orMac").value="";$("#orMsg").textContent="Opgeslagen, luisteren gestart";APP.poll();setTimeout(renderVictron,500)}
   catch(e){$("#orMsg").textContent="Niet opgeslagen: "+e.message}};
 $("#connBtn").onclick=()=>{if(!Native.hasPermission()){Native.requestPermission();return}APP.run()};
 $("#stopBtn").onclick=()=>APP.stop();

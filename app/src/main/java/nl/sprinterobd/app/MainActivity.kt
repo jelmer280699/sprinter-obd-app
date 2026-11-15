@@ -74,7 +74,7 @@ class MainActivity : Activity(), Core.Listener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         emit("onEvent", "permissie", if (hasBt()) "ok" else "geweigerd")
         if (hasBt()) startAndBind()
-        svc?.core?.startOrion()   // scantoestemming kan net verleend zijn
+        svc?.core?.startVictron()   // scantoestemming kan net verleend zijn
     }
 
     private fun startAndBind() {
@@ -134,7 +134,7 @@ class MainActivity : Activity(), Core.Listener {
                         "addTank" -> c.addTank(arg.replace(',', '.').toDouble()).toString()
                         "setCfg" -> { c.setCfg(arg); "{}" }
                         "setDevice" -> { c.setDevice(arg); "{}" }
-                        "setOrion" -> { c.setOrion(arg); "{}" }
+                        "setVictron" -> { c.setVictron(arg); "{}" }
                         else -> throw IllegalArgumentException("Onbekende actie $name")
                     }
                     emitResult(id, true, res)

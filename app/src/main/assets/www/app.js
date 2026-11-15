@@ -77,6 +77,6 @@
     addTankbeurt: l => action("addTank", l),
     setConfig: cfg => action("setCfg", JSON.stringify(cfg)),
     setDevice: a => action("setDevice", a),
-    setOrion: (mac, key) => action("setOrion", JSON.stringify({ mac, key })),
+    setVictron: (mac, key, verwijderen = false) => action("setVictron", JSON.stringify({ mac, key, verwijderen })),
   };
 })();
