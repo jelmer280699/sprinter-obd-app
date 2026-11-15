@@ -11,7 +11,9 @@
     return { rpm: Math.round(760 + drive * 1800), speed: spd, load: Math.round(17 + drive * 60), coolant: Math.round(63 + Math.min(t / 6, 30)),
       oil: Math.round(59 + Math.min(t / 6, 30)), iat: 23, ambient: 20, voltage: 13.81, boost_cmd: bc, boost_act: ba, boost_dev: Math.round((bc - ba) * 10) / 10,
       rail_cmd: rail, rail_act: rail - 2, rail_dev: 0.2, maf, lambda: 2 - drive * 0.7, fuel_lph: Math.round(maf / (14.5 * (2 - drive * 0.7)) / 0.835 * 360) / 100,
-      l100: spd >= 5 ? Math.round(maf / (14.5 * (2 - drive * 0.7)) / 0.835 * 3.6 / spd * 1000) / 10 : null, mil: false, dtc_count: 0, runtime: Math.round(t) };
+      l100: spd >= 5 ? Math.round(maf / (14.5 * (2 - drive * 0.7)) / 0.835 * 3.6 / spd * 1000) / 10 : null, mil: false, dtc_count: 0, runtime: Math.round(t),
+      pedal: 5.5 + drive * 50, pedal_e: 2.7 + drive * 25, pedal_pct: Math.round(drive * 81), throttle: 86.3, throttle_cmd: 86, baro: 99,
+      dist_clr: 34120, dist_mil: 0, warmups: 255, adblue_ruw: "07 00 00 00 00 00 00 00 00 00" };
   }
   setInterval(() => { const v = values(); hist.push({ t: Date.now(), ...v }); if (hist.length > 900) hist.shift(); }, 1000);
   const reply = (id, ok, obj) => setTimeout(() => window.onAction && window.onAction(id, ok, JSON.stringify(obj)), 300);

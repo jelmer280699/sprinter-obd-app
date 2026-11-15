@@ -36,10 +36,13 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         private const val TRIP_END_MS = 5 * 60_000L          // motor 5 min uit -> rit klaar
         private const val IDLE_STOP_MS = 15 * 60_000L        // 15 min geen ECU en geen rit -> dienst stopt
         private val FAST = listOf("0C", "0D", "04"); private val MEDIUM = listOf("70", "6D", "66", "24")
-        private val SLOW = listOf("05", "5C", "46", "42"); private val SLOW_SINGLE = listOf("68", "49", "11", "33")
+        private val SLOW = listOf("05", "5C", "46", "42"); private val SLOW_SINGLE = listOf("68", "49", "11", "33", "4A", "6C")
         private val VERY_SLOW = listOf("01", "1F")
+        private val EXTRA = listOf("21", "31", "30")              // afstanden/opwarmcycli: elke minuut
+        private val ONZEKER = listOf("85", "88", "92")            // [niet geverifieerd], alleen als aangezet
         val LOG_KEYS = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_cmd", "boost_act", "boost_dev",
-            "rail_cmd", "rail_act", "rail_dev", "maf", "lambda", "fuel_lph", "l100", "throttle", "pedal", "baro", "runtime")
+            "rail_cmd", "rail_act", "rail_dev", "maf", "lambda", "fuel_lph", "l100", "throttle", "pedal", "baro", "runtime",
+            "pedal_pct", "pedal_e", "throttle_cmd")
         val REF = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_act", "boost_cmd",
             "rail_act", "rail_cmd", "maf", "lambda", "throttle", "pedal", "baro", "runtime")
         private const val DIESEL_AFR = 14.5; private const val DIESEL_KG_L = 0.835
@@ -65,7 +68,11 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     @Volatile var tripActive = false
     var trip = JSONObject(); var health = TripHealth()
     private var lastEngine = 0L; private var engineOn = 0L
-    private var restVoltage = 0.0; private var restVoltageAt = 0L
+    /** (tijd, spanning, toerental) van de laatste 90 s, voor rustspanning en startdip. */
+    private val volts = ArrayDeque<Triple<Long, Double, Double>>()
+    private val kal: JSONObject = try { JSONObject(store.get("kalibratie", "{}")) } catch (_: Exception) { JSONObject() }
+    private var pedMin = kal.optDouble("pedaal_min", 5.5)
+    private var pedMax = kal.optDouble("pedaal_max", 67.5)
     var logfile = ""; private var resFile = ""
     private val csv = StringBuilder(); private val res = StringBuilder()
 
@@ -81,6 +88,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             val s = JSONObject(store.get("cfg", "{}"))
             if (s.has("did_onderzoek")) d.put("did_onderzoek", s.getBoolean("did_onderzoek"))
             if (s.has("dev")) d.put("dev", s.getString("dev"))
+            if (s.has("onzeker")) d.put("onzeker", s.getBoolean("onzeker"))
             s.optJSONObject("alarms")?.let { a -> val da = d.getJSONObject("alarms"); a.keys().forEach { da.put(it, a.get(it)) } }
             // Oude standaard accugrenzen (12,8/12,4 zonder duur) vervangen door de nieuwe; zelf aangepaste blijven staan.
             val v = d.getJSONObject("alarms").getJSONObject("voltage")
@@ -201,17 +209,25 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
 
     private fun pollLoop(e: Elm) {
         var cycle = 0; var nodata = 0; var errors = 0
-        var tSlow = 0L; var tVslow = 0L; var tDtc = System.currentTimeMillis() - 540_000
+        var tSlow = 0L; var tVslow = 0L; var tExtra = 0L; var tDtc = System.currentTimeMillis() - 540_000
         while (want) {
             try {
                 val got = HashMap(q(e, FAST))
                 nodata = if (got.isEmpty()) nodata + 1 else 0
                 if (nodata >= 5) throw IOException("ECU antwoordt niet meer (contact uit?)")
                 lastEcu = System.currentTimeMillis()
+                // 1. startaccu: met motor uit/startend de accuspanning elke cyclus meten (anders 1x per 5 s),
+                // zodat de spanningsdip tijdens het starten gevangen wordt.
+                if ((d("rpm") ?: 0.0) < 400) got.putAll(q(e, listOf("42")))
                 if (cycle % 2 == 0) got.putAll(q(e, MEDIUM))
                 val now = System.currentTimeMillis()
                 if (now - tSlow > 5000) { got.putAll(q(e, SLOW)); got.putAll(q(e, SLOW_SINGLE)); tSlow = now }
-                if (now - tVslow > 10000) { got.putAll(q(e, VERY_SLOW)); tVslow = now }
+                if (now - tVslow > 10000) {
+                    got.putAll(q(e, VERY_SLOW))
+                    if (cfg.optBoolean("onzeker", false)) for (p in ONZEKER) try { got.putAll(q(e, listOf(p))) } catch (_: IOException) {}
+                    tVslow = now
+                }
+                if (now - tExtra > 60_000) { got.putAll(q(e, EXTRA)); tExtra = now }
                 val nv = HashMap<String, Any>()
                 Pids.decode(got, nv)
                 boostFallback(e, nv)
@@ -288,12 +304,23 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
 
     // ---------------- alarmen ----------------
     private val since = HashMap<String, Long>()
-    private fun dur(key: String, cond: Boolean, needS: Double): Boolean {
+    private val hits = HashMap<String, Int>()
+    private val lastSeen = HashMap<String, Long>()
+
+    /**
+     * Voorwaarde moet `needS` seconden aanhouden ÉN in minstens 3 nieuwe metingen van `src` gelden.
+     * Alleen de klok tellen gaf vals rood: na een korte verbindingshapering bleef een oude meetwaarde staan
+     * en telde de tijd door (raildruk 15 nov 10:37, één meting van 27 %).
+     */
+    private fun dur(key: String, cond: Boolean, needS: Double, src: String): Boolean {
         val now = System.currentTimeMillis()
-        if (!cond) { since.remove(key); return false }
+        if (!cond) { since.remove(key); hits.remove(key); lastSeen.remove(key); return false }
         val s = since.getOrPut(key) { now }
-        return now - s >= needS * 1000
+        val upd = updated[src] ?: 0L
+        if (lastSeen[key] != upd) { lastSeen[key] = upd; hits[key] = (hits[key] ?: 0) + 1 }
+        return now - s >= needS * 1000 && (hits[key] ?: 0) >= 3
     }
+    private fun clearDur(vararg keys: String) { for (k in keys) { since.remove(k); hits.remove(k); lastSeen.remove(k) } }
 
     private fun evaluateAlarms(): Map<String, String> {
         val c = cfg.getJSONObject("alarms"); val a = HashMap<String, String>()
@@ -313,9 +340,9 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             val v = d(key)
             // Turbotekort pas vanaf 1800 rpm: daaronder loopt de turbo bij optrekken normaal achter (rit 8 nov).
             val lowRpm = key == "boost_dev" && rpm < 1800
-            if (v == null || runningMs < 10_000 || lowRpm) { since.remove(key + "_r"); since.remove(key + "_o"); continue }
-            val t = c.getJSONObject(key); val du = t.getDouble("duur_s")
-            a[key] = if (dur(key + "_r", v >= t.getDouble("rood"), du)) "rood" else if (dur(key + "_o", v >= t.getDouble("oranje"), du)) "oranje" else "ok"
+            if (v == null || runningMs < 10_000 || lowRpm) { clearDur(key + "_r", key + "_o"); continue }
+            val t = c.getJSONObject(key); val du = t.getDouble("duur_s"); val src = if (key == "boost_dev") "boost_act" else "rail_act"
+            a[key] = if (dur(key + "_r", v >= t.getDouble("rood"), du, src)) "rood" else if (dur(key + "_o", v >= t.getDouble("oranje"), du, src)) "oranje" else "ok"
         }
         // Accuspanning pas 30 s na de start beoordelen (Mercedes laadt pas na enkele seconden; getest 2026-11-08).
         // Te laag pas na 'duur_s' aanhoudend: het Mercedes-laadbeheer laat de spanning tijdens het rijden
@@ -323,11 +350,11 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         val u = d("voltage"); val t = c.getJSONObject("voltage"); val vdur = t.optDouble("duur_s", 60.0)
         if (u != null && rpm > 500 && runningMs > 30_000) {
             val hoogR = u >= t.getDouble("hoog_rood"); val hoogO = u >= t.getDouble("hoog_oranje")
-            val laagR = dur("u_laag_r", u <= t.getDouble("laag_rood"), vdur)
-            val laagO = dur("u_laag_o", u <= t.getDouble("laag_oranje"), vdur)
+            val laagR = dur("u_laag_r", u <= t.getDouble("laag_rood"), vdur, "voltage")
+            val laagO = dur("u_laag_o", u <= t.getDouble("laag_oranje"), vdur, "voltage")
             a["voltage"] = if (hoogR || laagR) "rood" else if (hoogO || laagO) "oranje" else "ok"
-        } else if (u != null) { a["voltage"] = "ok"; since.remove("u_laag_r"); since.remove("u_laag_o") }
-        d("load")?.let { a["load"] = if (dur("load", it >= c.getJSONObject("load").getDouble("oranje"), c.getJSONObject("load").getDouble("duur_s"))) "oranje" else "ok" }
+        } else if (u != null) { a["voltage"] = "ok"; clearDur("u_laag_r", "u_laag_o") }
+        d("load")?.let { a["load"] = if (dur("load", it >= c.getJSONObject("load").getDouble("oranje"), c.getJSONObject("load").getDouble("duur_s"), "load")) "oranje" else "ok" }
         (values["mil"] as? Boolean)?.let { a["mil"] = if (it) "rood" else "ok" }
         return a
     }
@@ -363,6 +390,17 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             val spd = d("speed") ?: 0.0
             if (spd >= 5) values["l100"] = (f / spd * 1000).roundToInt() / 10.0 else values.remove("l100")
         }
+        // Gaspedaal 0-100 %: de sensor loopt nooit van 0 tot 100 (gemeten 5,5-67,5 %); grenzen leren we zelf.
+        d("pedal")?.let { p ->
+            if (p > 2 && p < pedMin) pedMin = p
+            if (p > pedMax) pedMax = p
+            values["pedal_pct"] = (max(0.0, min(100.0, (p - pedMin) / max(1.0, pedMax - pedMin) * 100)) * 10).roundToInt() / 10.0
+        }
+        // Spanning rond de start bijhouden (voor rustspanning en startdip)
+        if ("voltage" in nv) d("voltage")?.let { u ->
+            volts.addLast(Triple(now, u, d("rpm") ?: 0.0))
+            while (volts.isNotEmpty() && now - volts.first().first > 90_000) volts.removeFirst()
+        }
         val prev = alarms
         alarms = evaluateAlarms()
         for ((k, lvl) in alarms) if (lvl == "rood" && prev[k] != "rood" && k in ALARM_NAMES) {
@@ -372,7 +410,6 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
 
         // automatische ritdetectie
         val rpm = d("rpm")
-        if (rpm != null && rpm == 0.0) d("voltage")?.let { restVoltage = it; restVoltageAt = now }
         if (rpm != null && rpm > 400) { lastEngine = now; if (!tripActive) startTrip(now) }
         if (tripActive && now - lastEngine > TRIP_END_MS) endTrip("motor 5 min uit")
 
@@ -394,6 +431,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         if (now - lastSave > 30_000) {
             lastSave = now
             flushLogs()
+            store.set("kalibratie", kal.put("pedaal_min", pedMin).put("pedaal_max", pedMax).toString())
             if (tripActive) { saveTrip(); store.set("trip_live", JSONObject().put("trip", trip).put("health", health.toJson()).put("lastEngine", lastEngine).toString()) }
             store.set("tank", tank.toString())
         }
@@ -436,7 +474,12 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
             }
         } catch (_: Exception) {}
         trip = newTripJson(now); health = TripHealth()
-        if (now - restVoltageAt < 120_000 && restVoltage > 0) health.single["rustspanning"] = restVoltage
+        // 1. Startaccu. Rustspanning = mediaan van de metingen met motor stil 60 tot 5 s vóór de start;
+        // startdip = laagste spanning in de 10 s rond het starten (tijdens het starten elke cyclus gemeten).
+        val rest = volts.filter { it.third == 0.0 && now - it.first in 5_000L..60_000L }.map { it.second }.sorted()
+        if (rest.size >= 3) health.single["rustspanning"] = rest[rest.size / 2]
+        val dip = volts.filter { now - it.first <= 10_000 }.minOfOrNull { it.second }
+        if (dip != null && volts.count { now - it.first <= 10_000 } >= 3) health.single["startdip"] = dip
         d("coolant")?.let { if (it <= 40) health.coldStart = now }
         logfile = "rit_${fileFmt.format(Date(now))}.csv"
         csv.append("tijd;").append(LOG_KEYS.joinToString(";")).append(";alarm\n")
@@ -584,6 +627,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     fun setCfg(json: String) {
         val s = JSONObject(json)
         if (s.has("did_onderzoek")) cfg.put("did_onderzoek", s.getBoolean("did_onderzoek"))
+        if (s.has("onzeker")) cfg.put("onzeker", s.getBoolean("onzeker"))
         s.optJSONObject("alarms")?.let { a -> val ca = cfg.getJSONObject("alarms"); a.keys().forEach { ca.put(it, a.get(it)) } }
         store.set("cfg", cfg.toString())
     }

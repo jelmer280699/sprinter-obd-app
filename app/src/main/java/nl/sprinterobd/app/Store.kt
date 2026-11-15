@@ -15,7 +15,7 @@ class Store(ctx: Context) {
     private val app = ctx.applicationContext
     private val dir = File(app.filesDir, "data").apply { mkdirs() }
     val logDir = File(app.filesDir, "logs").apply { mkdirs() }
-    private val allowed = setOf("ritten", "health", "mode06", "events", "tank", "cfg", "trip_live", "export")
+    private val allowed = setOf("ritten", "health", "mode06", "events", "tank", "cfg", "trip_live", "export", "kalibratie")
 
     init {
         // Eerste keer met exportbeheer: alle bestaande logs gelden als al (handmatig) geëxporteerd,

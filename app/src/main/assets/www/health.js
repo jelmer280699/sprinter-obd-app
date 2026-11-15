@@ -65,8 +65,14 @@
   const BASIS_MIN = 5;
   // [naam, eenheid, min_n, richting (+1 hoger slechter, -1 lager slechter, 0 beide), drempel oranje, drempel rood, tip]
   const FEATURES = {
-    koeling: ["Koelvloeistof boven buitentemp. bij hoge last", "°C", 60, +1, 5, 10,
+    koelreserve: ["Koelreserve: tijd >100 °C bij zware last", "min/u", 120, +1, 5, 15,
       "Radiator/condensor vrij van stof en insecten? Koelvloeistofniveau, ventilatorkoppeling, waterpomp."],
+    luchtvulling: ["Luchtvulling bij vollast (gemeten/theoretisch)", "", 10, -1, 0.05, 0.10,
+      "Luchtfilter (stof!), lek na de luchtmassameter of in laadluchtslangen, EGR-klep die blijft hangen, roetfilter dat dichtslibt."],
+    olie_koel: ["Olie boven koelvloeistof bij last", "°C", 60, +1, 4, 8,
+      "Olie-waterwarmtewisselaar vervuild, olie verouderd of te laag oliepeil."],
+    startdip: ["Startaccu: laagste spanning bij starten", "V", 1, -1, 0.3, 0.6,
+      "Startaccu laten testen (capaciteit/koudstartstroom); accupolen en massakabel controleren."],
     // mediaan op stabiele vollastmomenten (oude 'turbo' telde drukdips na het schakelen mee)
     turbo_stabiel: ["Turbodruk tekort bij stabiele vollast", "kPa", 15, +1, 8, 15,
       "Laadluchtslangen en klemmen nalopen (bekend zwak punt), intercooler op lekkage, turboactuator."],
@@ -142,11 +148,14 @@
       } else if (last == null) item.status = "geen data";
       res[k] = item;
     }
-    const rv = res.rustspanning;
-    if (rv.laatste != null) {
-      if (rv.laatste < 12.0) rv.status = "rood";
-      else if (rv.laatste < 12.2 && rv.status !== "rood") rv.status = "oranje";
-    }
+    // Absolute grenzen, ook zonder basislijn
+    const abs = (k, rood, oranje) => {
+      const it = res[k]; if (!it || it.laatste == null) return;
+      if (it.laatste < rood) it.status = "rood";
+      else if (it.laatste < oranje && it.status !== "rood") it.status = "oranje";
+    };
+    abs("rustspanning", 12.0, 12.2);
+    abs("startdip", 9.6, 10.0);   // gezonde startaccu zakt bij het starten niet onder ~10 V
     return res;
   }
 

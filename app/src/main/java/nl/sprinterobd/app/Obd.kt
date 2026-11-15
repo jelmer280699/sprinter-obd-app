@@ -55,6 +55,14 @@ object Pids {
             if (it[0] and 1 == 1) v["boost_cmd"] = r1(u16(it[1], it[2]) * 0.03125)
             if (it[0] and 2 == 2) v["boost_act"] = r1(u16(it[3], it[4]) * 0.03125)
         }
+        p[0x4A]?.let { v["pedal_e"] = r1(it[0] * 100.0 / 255) }
+        p[0x6C]?.let { if (it[0] and 1 == 1) v["throttle_cmd"] = r1(it[1] * 100.0 / 255) }
+        p[0x21]?.let { v["dist_mil"] = u16(it[0], it[1]).toDouble() }
+        p[0x31]?.let { v["dist_clr"] = u16(it[0], it[1]).toDouble() }
+        p[0x30]?.let { v["warmups"] = it[0].toDouble() }
+        // [niet geverifieerd]: alleen ruw tonen, geen formule
+        for ((pid, key) in listOf(0x85 to "adblue_ruw", 0x88 to "scr_ruw", 0x92 to "brandstofsys_ruw"))
+            p[pid]?.let { v[key] = it.joinToString(" ") { b -> "%02X".format(b) } }
         p[0x01]?.let {
             val (a, b, c, e) = listOf(it[0], it[1], it[2], it[3])
             v["mil"] = (a and 0x80) != 0
@@ -146,9 +154,14 @@ class TripHealth(saved: JSONObject? = null) {
     companion object {
         // turbo_stabiel: mediaan van het tekort op stabiele vollastmomenten (vervangt 'turbo', dat door
         // drukdips na het schakelen per rit tussen 9 en 32 kPa schommelde; ritten 8-14 nov).
-        val MIN_N = mapOf("koeling" to 60, "turbo_stabiel" to 15, "rail" to 30, "intercooler" to 60, "laadspanning" to 60,
-            "rustspanning" to 1, "opwarmtijd" to 1, "stationair_maf" to 30)
+        // 'koeling' (koelv. - buiten) vervangen door 'koelreserve': de thermostaat regelt de temperatuur,
+        // dus alleen tijd boven 100 °C bij zware last zegt iets over de koelcapaciteit.
+        val MIN_N = mapOf("koelreserve" to 120, "turbo_stabiel" to 15, "rail" to 30, "intercooler" to 60, "laadspanning" to 60,
+            "rustspanning" to 1, "startdip" to 1, "opwarmtijd" to 1, "stationair_maf" to 30, "luchtvulling" to 10, "olie_koel" to 60)
+        private const val VD_L = 2.143  // cilinderinhoud OM651
     }
+    private val ve = ArrayList<Double>()
+    private var heavy = 0; private var heavyHot = 0
     private val sum = HashMap<String, Double>()
     private val n = HashMap<String, Int>()
     val single = HashMap<String, Double>()
@@ -162,12 +175,15 @@ class TripHealth(saved: JSONObject? = null) {
             s.optJSONObject("n")?.let { o -> o.keys().forEach { n[it] = o.getInt(it) } }
             s.optJSONObject("single")?.let { o -> o.keys().forEach { single[it] = o.getDouble(it) } }
             s.optJSONArray("turbo")?.let { a -> for (i in 0 until a.length()) turbo.add(a.getDouble(i)) }
+            s.optJSONArray("ve")?.let { a -> for (i in 0 until a.length()) ve.add(a.getDouble(i)) }
+            heavy = s.optInt("heavy", 0); heavyHot = s.optInt("heavyHot", 0)
             coldStart = s.optLong("coldStart", 0)
         }
     }
 
     fun toJson(): JSONObject = JSONObject().put("sum", JSONObject(sum as Map<*, *>)).put("n", JSONObject(n as Map<*, *>))
         .put("single", JSONObject(single as Map<*, *>)).put("coldStart", coldStart).put("turbo", org.json.JSONArray(turbo))
+        .put("ve", org.json.JSONArray(ve)).put("heavy", heavy).put("heavyHot", heavyHot)
 
     private fun add(k: String, x: Double) { sum[k] = (sum[k] ?: 0.0) + x; n[k] = (n[k] ?: 0) + 1 }
 
@@ -178,7 +194,17 @@ class TripHealth(saved: JSONObject? = null) {
         if (coldStart > 0 && cool != null && cool >= 80 && !single.containsKey("opwarmtijd"))
             single["opwarmtijd"] = ((now - coldStart) / 6000.0).roundToInt() / 10.0
         val hot = load != null && load >= 60
-        if (hot && spd >= 40 && cool != null && amb != null && rt > 900) add("koeling", cool - amb)
+        // 4. koelreserve: seconden boven 100 °C koelvloeistof bij zware last (>=70 %), na opwarmen
+        if (load != null && load >= 70 && cool != null && rt > 600) { heavy++; if (cool > 100) heavyHot++ }
+        // 2. luchtvulling bij vollast (EGR dicht): gemeten luchtmassa / theoretische (p/RT x Vd x rpm/120)
+        val maf = d("maf"); val ba = d("boost_act"); val iat = d("iat")
+        if (load != null && load >= 85 && rpm >= 1800 && maf != null && ba != null && iat != null && v["boost_begrensd"] != true && ve.size < 5000) {
+            val rho = ba * 1000 / (287.05 * (iat + 273.15))
+            ve.add(maf / (rho * VD_L / 1000 * rpm / 120 * 1000))
+        }
+        // 3. olie - koelvloeistof bij last, alleen als beide op temperatuur zijn
+        val oil = d("oil")
+        if (hot && oil != null && cool != null && cool >= 85 && oil >= 85 && rt > 1200) add("olie_koel", oil - cool)
         val cmd = d("boost_cmd") ?: 0.0
         val turboOk = hot && rpm >= 1800 && cmd >= 140 && d("boost_act") != null && v["boost_begrensd"] != true
         if (turboOk) {
@@ -194,11 +220,15 @@ class TripHealth(saved: JSONObject? = null) {
 
     fun features(): JSONObject {
         val o = JSONObject()
+        fun median(l: List<Double>) = l.sorted()[l.size / 2]
         for ((k, minN) in MIN_N) {
-            if (k == "turbo_stabiel") {
-                if (turbo.size >= minN) { val s = turbo.sorted(); o.put(k, (s[s.size / 2] * 100).roundToInt() / 100.0) }
-            } else if (single.containsKey(k)) o.put(k, single[k])
-            else if ((n[k] ?: 0) >= minN) o.put(k, ((sum[k]!! / n[k]!!) * 100).roundToInt() / 100.0)
+            when {
+                k == "turbo_stabiel" -> if (turbo.size >= minN) o.put(k, (median(turbo) * 100).roundToInt() / 100.0)
+                k == "luchtvulling" -> if (ve.size >= minN) o.put(k, (median(ve) * 1000).roundToInt() / 1000.0)
+                k == "koelreserve" -> if (heavy >= minN) o.put(k, (heavyHot * 60.0 / heavy * 10).roundToInt() / 10.0)  // min per uur zware last
+                single.containsKey(k) -> o.put(k, single[k])
+                (n[k] ?: 0) >= minN -> o.put(k, ((sum[k]!! / n[k]!!) * 100).roundToInt() / 100.0)
+            }
         }
         return o
     }
@@ -206,7 +236,7 @@ class TripHealth(saved: JSONObject? = null) {
     fun progress(): JSONObject {
         val o = JSONObject()
         for ((k, minN) in MIN_N) {
-            val cnt = if (k == "turbo_stabiel") turbo.size else (n[k] ?: 0)
+            val cnt = when (k) { "turbo_stabiel" -> turbo.size; "luchtvulling" -> ve.size; "koelreserve" -> heavy; else -> n[k] ?: 0 }
             o.put(k, if (single.containsKey(k)) 1.0 else min(1.0, cnt.toDouble() / minN))
         }
         return o

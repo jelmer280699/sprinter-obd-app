@@ -72,6 +72,7 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
     <button data-s="dtc">Foutcodes</button>
     <button data-s="rit">Rit</button>
     <button data-s="gz">Gezondheid</button>
+    <button data-s="sens">Sensoren</button>
     <button data-s="set">Instellingen</button>
   </nav>
 </header>
@@ -106,6 +107,14 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
     <div class="row"><input id="tankL" inputmode="decimal" placeholder="liters" style="width:130px"><button class="btn" id="tankBtn">Opslaan</button></div>
     <p id="tankMsg" class="dim"></p><div id="tankInfo" class="dim"></div></div>
   <div class="card"><h3>Ritten</h3><div class="scroll"><table id="ritten"></table></div></div>
+</section>
+
+<section id="sens">
+  <div class="card">Alle waarden die de app leest, live. Zet een vinkje bij <b>Tegel</b> om een waarde op het overzicht te zetten;
+    met de pijlen bepaal je de volgorde.
+    <div class="row" style="margin-top:8px"><button class="btn ghost small" id="tilesReset">Standaardtegels</button>
+    <label class="row"><input type="checkbox" id="onzeker" style="width:20px;height:20px"> Ook [niet geverifieerde] waarden uitlezen (AdBlue/SCR, ruw)</label></div></div>
+  <div class="card scroll"><table id="sensTab"></table></div>
 </section>
 
 <section id="gz">
@@ -164,7 +173,7 @@ const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">
  basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
 // ---------- tabs ----------
-const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts};
+const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true)};
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("nav button,section").forEach(e=>e.classList.remove("on"));
   b.classList.add("on");$("#"+b.dataset.s).classList.add("on");loaders[b.dataset.s]?.();
@@ -183,12 +192,33 @@ function ask(title,body,yes,{check=false}={}){
 const closeModal=()=>$("#modal").classList.remove("on");
 
 // ---------- overzicht ----------
-const TILES=[["coolant","Koelvloeistof","°C",0],["oil","Motorolie","°C",0],["iat","Inlaatlucht","°C",0],
- ["boost_act","Turbodruk","kPa",0],["rail_act","Raildruk","bar",0],["voltage","Accuspanning","V",2],
- ["load","Belasting","%",0],["rpm","Toerental","rpm",0],["speed","Snelheid","km/u",0],
- ["fuel","Verbruik [schatting]","",1],["ambient","Buiten","°C",0],["maf","Luchtmassa","g/s",1],["mil","Motorlampje","",0]];
-const ALARMKEY={boost_act:"boost_dev",rail_act:"rail_dev"};
-$("#tiles").innerHTML=TILES.map(t=>`<div class="tile" id="t_${t[0]}"><div class="lbl">${t[1]}</div><div class="val">–</div><div class="sub"></div></div>`).join("");
+// Alle waarden die de app kan tonen: [sleutel, naam, eenheid, decimalen, groep, onzeker]
+const SENSORS=[
+ ["rpm","Toerental","rpm",0,"Motor"],["load","Motorbelasting","%",0,"Motor"],["coolant","Koelvloeistof","°C",0,"Motor"],
+ ["oil","Motorolie","°C",0,"Motor"],["runtime","Looptijd sinds start","s",0,"Motor"],["mil","Motorlampje","",0,"Motor"],
+ ["boost_act","Turbodruk werkelijk","kPa",0,"Lucht & turbo"],["boost_cmd","Turbodruk gevraagd","kPa",0,"Lucht & turbo"],
+ ["boost_dev","Turbotekort","kPa",0,"Lucht & turbo"],["maf","Luchtmassa","g/s",1,"Lucht & turbo"],["iat","Inlaatlucht","°C",0,"Lucht & turbo"],
+ ["throttle","Smoorklep","%",0,"Lucht & turbo"],["throttle_cmd","Smoorklep gevraagd","%",0,"Lucht & turbo"],["lambda","Lambda (max 2,0)","λ",2,"Lucht & turbo"],
+ ["rail_act","Raildruk werkelijk","bar",0,"Brandstof"],["rail_cmd","Raildruk gevraagd","bar",0,"Brandstof"],["rail_dev","Raildruk-tekort","%",1,"Brandstof"],
+ ["fuel","Verbruik [schatting]","",1,"Brandstof"],
+ ["voltage","Accuspanning (bij ECU)","V",2,"Elektrisch"],
+ ["speed","Snelheid","km/u",0,"Rijden"],["pedal_pct","Gaspedaal","%",0,"Rijden"],["pedal","Gaspedaal sensor D (ruw)","%",1,"Rijden"],
+ ["pedal_e","Gaspedaal sensor E (ruw)","%",1,"Rijden"],
+ ["ambient","Buitentemperatuur","°C",0,"Omgeving"],["baro","Luchtdruk","kPa",0,"Omgeving"],
+ ["dist_clr","Afstand sinds codes gewist","km",0,"Tellers"],["dist_mil","Afstand met motorlampje aan","km",0,"Tellers"],["warmups","Opwarmcycli sinds wissen","",0,"Tellers"],
+ ["adblue_ruw","AdBlue/NOx-reagens (ruw)","",0,"[niet geverifieerd]",1],["scr_ruw","SCR-inducement (ruw)","",0,"[niet geverifieerd]",1],
+ ["brandstofsys_ruw","Brandstofsysteemregeling (ruw)","",0,"[niet geverifieerd]",1]];
+const SMAP=Object.fromEntries(SENSORS.map(s=>[s[0],s]));
+const DEFAULT_TILES=["coolant","oil","iat","boost_act","rail_act","voltage","load","rpm","speed","fuel","ambient","maf","mil"];
+let TILES=[];
+function buildTiles(){
+  let sel;try{sel=JSON.parse(localStorage.getItem("tegels"))}catch(e){}
+  if(!Array.isArray(sel)||!sel.length)sel=DEFAULT_TILES;
+  TILES=sel.filter(k=>SMAP[k]).map(k=>SMAP[k]);
+  $("#tiles").innerHTML=TILES.map(t=>`<div class="tile" id="t_${t[0]}"><div class="lbl">${t[1]}</div><div class="val">–</div><div class="sub"></div></div>`).join("");
+}
+const ALARMKEY={boost_act:"boost_dev",rail_act:"rail_dev",boost_dev:"boost_dev",rail_dev:"rail_dev"};
+buildTiles();
 let audio,lastRed=new Set();
 function beep(){try{audio=audio||new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;o.connect(g);g.connect(audio.destination);g.gain.value=.25;o.start();o.stop(audio.currentTime+.4)}catch(e){}}
 document.body.addEventListener("click",()=>{try{audio=audio||new AudioContext();audio.resume()}catch(e){}},{once:true});
@@ -203,7 +233,7 @@ function tick(){
     const age=S.age[k==="fuel"?"maf":k]??99;
     el.className="tile "+(["ok","oranje","rood"].includes(a)?a:"")+(age>15&&k!=="mil"?" stale":"");
     if(a==="rood")red.add(lbl);
-    let val=fmt(v[k],d),unit=u,sub="";
+    let val=typeof v[k]==="string"?`<span style="font-size:18px">${esc(v[k])}</span>`:fmt(v[k],d),unit=u,sub="";
     if(k==="mil"){val=v.mil==null?"–":v.mil?"AAN":"uit";if(v.dtc_count!=null)sub=`${v.dtc_count} code(s)`}
     if(k==="fuel"){if(v.l100!=null){val=fmt(v.l100,1);unit="L/100";sub=`${fmt(v.fuel_lph,1)} L/u`}else{val=fmt(v.fuel_lph,1);unit="L/u";sub="stilstand"}
       if(S.tank.factor&&S.tank.factor!==1)sub+=` · ×${S.tank.factor}`}
@@ -341,6 +371,37 @@ function loadHealth(){
   const ev=APP.store.get("events",[]).slice(-20).reverse();
   $("#gzEv").innerHTML=ev.length?ev.map(e=>`<tr><td class="dim">${e.tijd}</td><td>${esc(e.tekst)}</td></tr>`).join(""):'<tr><td class="dim">Nog geen gebeurtenissen.</td></tr>';
 }
+
+// ---------- alle sensoren ----------
+function selTiles(){let s;try{s=JSON.parse(localStorage.getItem("tegels"))}catch(e){}return Array.isArray(s)&&s.length?s:DEFAULT_TILES.slice()}
+function saveTiles(s){try{localStorage.setItem("tegels",JSON.stringify(s))}catch(e){}buildTiles()}
+function renderSensors(full){
+  if(!$("#sens").classList.contains("on"))return;
+  const v=S.values,sel=selTiles(),onz=!!(APP.CFG&&APP.CFG.onzeker);
+  if(full){
+    $("#onzeker").checked=onz;
+    let grp="";
+    $("#sensTab").innerHTML=SENSORS.filter(s=>!s[5]||onz).map(([k,n,u,d,g])=>{
+      const head=g!==grp?`<tr><th colspan="4" style="padding-top:14px">${g}</th></tr>`:"";grp=g;
+      const i=sel.indexOf(k);
+      return head+`<tr><td>${n}</td><td><b id="sv_${k}">–</b> <span class="dim">${u}</span></td>
+        <td><label class="row"><input type="checkbox" data-tile="${k}" ${i>=0?"checked":""} style="width:20px;height:20px"> Tegel</label></td>
+        <td>${i>=0?`<button class="btn small ghost" data-up="${k}">▲</button> <button class="btn small ghost" data-dn="${k}">▼</button>`:""}</td></tr>`}).join("");
+  }
+  for(const [k,,,d] of SENSORS){const el=document.getElementById("sv_"+k);if(!el)continue;
+    let x=v[k];if(k==="fuel")x=v.l100!=null?v.l100:v.fuel_lph;if(k==="mil")x=v.mil==null?null:(v.mil?"AAN":"uit");
+    el.textContent=x==null?"–":typeof x==="number"?fmt(x,d):String(x);
+    const age=S.age[k==="fuel"?"maf":k];el.style.opacity=age!=null&&age>15?.4:1}
+}
+setInterval(()=>renderSensors(false),700);
+$("#sensTab").onclick=e=>{
+  const t=e.target,s=selTiles();
+  if(t.dataset.tile){const k=t.dataset.tile,i=s.indexOf(k);if(t.checked&&i<0)s.push(k);if(!t.checked&&i>=0)s.splice(i,1);saveTiles(s);renderSensors(true)}
+  const mv=(k,d)=>{const i=s.indexOf(k),j=i+d;if(i<0||j<0||j>=s.length)return;[s[i],s[j]]=[s[j],s[i]];saveTiles(s);renderSensors(true)};
+  if(t.dataset.up)mv(t.dataset.up,-1);if(t.dataset.dn)mv(t.dataset.dn,1);
+};
+$("#tilesReset").onclick=()=>{saveTiles(DEFAULT_TILES.slice());renderSensors(true)};
+$("#onzeker").onchange=async e=>{try{await APP.setConfig({onzeker:e.target.checked})}catch(x){}APP.poll();setTimeout(()=>renderSensors(true),300)};
 
 // ---------- instellingen ----------
 const evlog=[];
