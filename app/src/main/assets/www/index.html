@@ -75,7 +75,7 @@ textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
 .heroval{position:absolute;left:0;right:0;top:118px;display:flex;flex-direction:column;align-items:center}
 .heroval .v{font:600 120px/.9 var(--num);font-variant-numeric:tabular-nums}.heroval .u{font-size:20px;color:var(--dim)}
 .hero.stale .v{color:var(--na)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
 .tile.wide{margin-bottom:12px}
 .tile .meter{height:8px;border-radius:4px;background:var(--line);margin-top:10px;position:relative}
 .tile .meter i{display:block;height:8px;border-radius:4px;background:var(--accent);width:0}
@@ -89,6 +89,26 @@ textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
 .sw.on i{background:var(--ok)}.sw.on i::after{left:25px;background:var(--bg)}
 .mv{width:48px;height:48px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--accent);font-size:16px}
 .mv:disabled{opacity:.3}
+.ring{position:relative;flex:none}.ring svg{width:100%;height:100%;display:block}
+.ringval{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ringval .rv{font:600 54px/.9 var(--num)}.ringval .ru{font-size:16px;color:var(--dim)}.ringval .rs{font-size:16px;color:var(--dim);margin-top:4px}
+.flow{display:grid;grid-template-columns:1fr 1fr;height:40px}.flow.one{grid-template-columns:1fr}
+.flow i{width:4px;margin:0 auto 8px;border-radius:2px;position:relative;display:block}
+.flow i::after{content:"";position:absolute;bottom:-10px;left:-5px;border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid currentColor}
+.tile.accu{display:flex;align-items:center;gap:16px;padding:16px}.accustats{flex:1;display:flex;flex-direction:column;gap:6px}
+.accustats div{display:flex;justify-content:space-between;gap:8px}.accustats b{font:600 22px var(--num)}
+.kamphero{display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px;margin-bottom:12px}
+.miles{margin:0;font-style:italic;color:var(--accent)}
+.spark{width:100%;height:110px;display:block;margin-top:10px}
+.axis{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:6px}
+.tile.hrow{display:flex;align-items:center;justify-content:space-between;min-height:100px;margin-bottom:12px}.tile.hrow .val{margin:0;font-size:60px}
+.meter.big{height:16px;border-radius:8px;margin-top:18px}.meter.big i{height:16px;border-radius:8px}.meter.big b{top:0;height:16px;background:var(--card)}
+.bigbtn{min-height:56px;flex:1}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:12px}
+.seg button{min-height:48px;border:none;border-radius:10px;background:none;color:var(--dim);font:600 15px var(--sans)}.seg button.on{background:var(--actbg);color:var(--accent)}
+/* Dimstanden (Kampeermodus): avond ~75 %, nacht = gedimde aardetinten zonder fel wit */
+html.dim-avond body{filter:brightness(.75)}
+html.dim-nacht{--bg:#0A0907;--card:#12100D;--card2:#14120E;--navbg:#0A0907;--actbg:#1A1813;--line:#1C1A15;--txt:#8C8270;--dim:#6E6450;--na:#3A3429;--ok:#6B7745;--accent:#8C8270;--warn:#A85F2E;--solar:#8F6E33}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:45vh;overflow:auto;color:var(--dim)}
 </style>
@@ -110,8 +130,26 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
   <button data-g="set"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></span>Instellingen</button>
 </nav>
 <main>
-<section id="en"><div class="grid" id="enTiles"></div>
-  <p class="dim" style="font-size:13px">Voorlopige weergave van de woonaccu, zon en DC-DC-lader. De energiestroom volgt in stap 3.</p></section>
+<section id="en"><div id="enBody"></div></section>
+
+<section id="hitte"><div id="hitteBody"></div>
+  <div class="grid2"><div class="tile" id="h_load"><div class="lbl"></div><div class="val"></div><div class="sub"></div></div>
+    <div class="tile" id="h_ambient"><div class="lbl"></div><div class="val"></div><div class="sub"></div></div></div>
+  <div class="tile wide" id="h_boost_act"><div class="lbl"></div><div class="val"></div><div class="sub"></div></div>
+</section>
+
+<section id="gravel">
+  <div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <button class="btn ghost bigbtn" onclick="swipeDash(-1)" aria-label="Vorig dashboard">‹ Vorige</button>
+    <button class="btn ghost bigbtn" onclick="swipeDash(1)" aria-label="Volgend dashboard">Volgende ›</button></div>
+  <div id="gravelBody"></div>
+</section>
+
+<section id="kamp">
+  <div class="seg" role="group" aria-label="Helderheid">
+    <button data-dim="dag">Dag</button><button data-dim="avond">Avond</button><button data-dim="nacht">Nacht</button></div>
+  <div id="kampBody"></div>
+</section>
 
 <section id="rijden">
   <div class="hero" id="hero"><svg viewBox="0 0 340 300" fill="none" aria-hidden="true">
@@ -134,7 +172,7 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 
 <section id="gr">
   <div class="chart"><h3>Temperaturen (°C)</h3><canvas id="c1"></canvas><div class="legend" id="l1"></div></div>
-  <div class="chart"><h3>Turbodruk (kPa abs)</h3><canvas id="c2"></canvas><div class="legend" id="l2"></div></div>
+  <div class="chart"><h3>Turbodruk (bar abs)</h3><canvas id="c2"></canvas><div class="legend" id="l2"></div></div>
   <div class="chart"><h3>Raildruk (bar)</h3><canvas id="c3"></canvas><div class="legend" id="l3"></div></div>
   <div class="chart"><h3>Toerental (rpm) en belasting (% ×40)</h3><canvas id="c4"></canvas><div class="legend" id="l4"></div></div>
   <p class="dim">Laatste 15 minuten, 1 punt per seconde.</p>
@@ -153,9 +191,12 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 </section>
 
 <section id="rit">
-  <div class="grid" id="trip"></div>
-  <p><button class="btn ghost" id="tripReset">Rit afsluiten en nieuwe starten</button></p>
-  <div class="card"><h3>Tankbeurt (kalibratie verbruik)</h3>
+  <div id="trip"></div>
+  <div class="row" style="margin-bottom:12px">
+    <button class="btn" style="flex:1" onclick="document.getElementById('tankCard').scrollIntoView({behavior:'smooth'});document.getElementById('tankL').focus()">Tankbeurt invoeren</button>
+    <button class="btn ghost" style="flex:1" id="tripReset">Rit afsluiten</button></div>
+  <details class="card" id="tripDetBox"><summary style="min-height:44px;display:flex;align-items:center;font-weight:600">Details deze rit</summary><table id="tripDet"></table></details>
+  <div class="card" id="tankCard"><h3>Tankbeurt (kalibratie verbruik)</h3>
     <p class="dim">Tank altijd <b>helemaal vol</b> en vul in hoeveel liter erin ging. De eerste keer start alleen de teller.</p>
     <div class="row"><input id="tankL" inputmode="decimal" placeholder="liters" style="width:130px"><button class="btn" id="tankBtn">Opslaan</button></div>
     <p id="tankMsg" class="dim"></p><div id="tankInfo" class="dim"></div></div>
@@ -237,11 +278,16 @@ const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">
  basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
 // ---------- navigatie: 5 hoofdsecties onderin; Dashboards = swipe-carrousel uit de bibliotheek ----------
-const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy,lib:renderLib,rijden:()=>renderRijden(true)};
+const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy,lib:renderLib,rijden:()=>renderRijden(true),
+  hitte:renderHitte,gravel:renderGravel,kamp:renderKamp};
 // [id, naam, sectie, omschrijving, standaard aan]
 const DASHES=[["rijden","Rijden","rijden","Snelheid, toerental, koelvloeistof, turbodruk, belasting, accu auto",true],
- ["mijn","Mijn tegels","ov","Je eigen tegels; kiezen en ordenen in Alle sensoren",true],
+ ["hitte","Hitte & bergop","hitte","Koelvloeistof en inlaatlucht met trend 10 min, belasting, turbodruk, buiten",true],
+ ["gravel","Gravel / offroad","gravel","Lage snelheid 0–40 km/u groot, toerental, belasting, koelvloeistof",true],
+ ["energie","Energie","en","Zon + dynamo → woonaccu → verbruikers, accu auto",true],
+ ["kamp","Kampeermodus","kamp","Woonaccu, verbruik, resterende tijd, zon, startaccu · dimbaar",true],
  ["trip","Trip & verbruik","rit","Huidige rit, verbruik [schatting], tankbeurt, ritten",true],
+ ["mijn","Mijn tegels","ov","Je eigen tegels; kiezen en ordenen in Alle sensoren",true],
  ["grafieken","Grafieken","gr","Temperaturen, turbodruk, raildruk, toerental · 15 min",false],
  ["sensoren","Alle sensoren","sens","Elke waarde die de app leest, als lijst",false]];
 const DBYID=Object.fromEntries(DASHES.map(d=>[d[0],d])),DBYSEC=Object.fromEntries(DASHES.map(d=>[d[2],d]));
@@ -256,22 +302,22 @@ function activeSecs(){const c=dashCfg(),a=c.order.filter(id=>c.on[id]);return (a
 const GROUPS={dash:[...DASHES.map(d=>d[2]),"lib"],miles:["gz"],en:["en"],dtc:["dtc"],set:["set"]};
 const TITLES={...Object.fromEntries(DASHES.map(d=>[d[2],d[1]])),lib:"Dashboardbibliotheek",gz:"Hoe gaat het met Miles?",en:"Energie",dtc:"Foutcodes",set:"Instellingen"};
 let lastDash=activeSecs()[0],cur="";
-function show(s){
+function show(s,grp){
   if(!TITLES[s])s=activeSecs()[0];
-  const g=Object.keys(GROUPS).find(k=>GROUPS[k].includes(s));cur=s;
+  const g=grp&&GROUPS[grp]?.includes(s)?grp:Object.keys(GROUPS).find(k=>GROUPS[k].includes(s));cur=s;
   document.querySelectorAll("main>section").forEach(e=>e.classList.toggle("on",e.id===s));
   document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.g===g));
   $("#sub").style.display=g==="dash"?"flex":"none";
-  $("#dots").innerHTML=DBYSEC[s]?activeSecs().map(x=>`<span${x===s?' class="on"':""}></span>`).join(""):"";
+  $("#dots").innerHTML=DBYSEC[s]&&g==="dash"?activeSecs().map(x=>`<span${x===s?' class="on"':""}></span>`).join(""):"";
   $("#libBtn").classList.toggle("on",s==="lib");
   $("#title").textContent=TITLES[s];
-  if(DBYSEC[s])lastDash=s;
+  if(DBYSEC[s]&&g==="dash")lastDash=s;
   loaders[s]?.();scrollTo(0,0);
   try{localStorage.setItem("tab",s)}catch(e){}
 }
 function swipeDash(dir){const list=activeSecs();if(!DBYSEC[cur]||list.length<2)return;const i=list.indexOf(cur);
-  show(i<0?list[0]:list[(i+dir+list.length)%list.length])}
-document.querySelectorAll("nav.bottom button").forEach(b=>b.onclick=()=>show(b.dataset.g==="dash"?(activeSecs().includes(lastDash)?lastDash:activeSecs()[0]):GROUPS[b.dataset.g][0]));
+  show(i<0?list[0]:list[(i+dir+list.length)%list.length],"dash")}
+document.querySelectorAll("nav.bottom button").forEach(b=>b.onclick=()=>b.dataset.g==="dash"?show(activeSecs().includes(lastDash)?lastDash:activeSecs()[0],"dash"):show(GROUPS[b.dataset.g][0],b.dataset.g));
 $("#libBtn").onclick=()=>show(cur==="lib"?lastDash:"lib");
 {let x0=0,y0=0,skip=false;const m=document.querySelector("main");
  m.addEventListener("touchstart",e=>{const t=e.touches[0];x0=t.clientX;y0=t.clientY;skip=!!e.target.closest(".scroll,input,select,textarea")},{passive:true});
@@ -411,16 +457,94 @@ function tick(){
 }
 $("#banner2").onclick=()=>show("gz");
 
-// ---------- energie (voorlopig: tegels; energiestroom volgt in stap 3) ----------
-const ENERGY=["shunt_soc","shunt_v","shunt_a","shunt_rest_min","mppt_w","mppt_yield_wh","orion_out_a","orion_state","voltage"];
+// ---------- gedeelde helpers voor de vaste dashboards ----------
+// Waarde alleen tonen als hij vers is (OBD 15 s, Victron-uitzending 90 s); anders null → "–" in grijs.
+const V=(k,max=15)=>{const x=S.values[k],a=S.age[k];return x==null||(a!=null&&a>max)?null:x};
+const vic=k=>V(k,90);
+const isOn=id=>$("#"+id).classList.contains("on");
+const fmtRest=m=>m==null?"–":m>=1440?`${Math.floor(m/1440)} d ${Math.floor(m%1440/60)} u`:`${Math.floor(m/60)} u ${Math.round(m%60)} m`;
+function ring(p,size,stroke,color,inner){const r=(size-stroke)/2;
+  return `<div class="ring" style="width:${size}px;height:${size}px"><svg viewBox="0 0 ${size} ${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="var(--line)" stroke-width="${stroke}" fill="none"/>`+
+   (p==null?"":`<circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="${color}" stroke-width="${stroke}" fill="none" stroke-linecap="round" pathLength="100" stroke-dasharray="${Math.max(0,Math.min(100,p))} 100" transform="rotate(-90 ${size/2} ${size/2})"/>`)+
+   `</svg><div class="ringval">${inner}</div></div>`}
+const box=(lbl,val,unit,sub,cls="",extra="")=>`<div class="tile ${cls}"${extra}><div class="lbl">${lbl}</div><div class="val">${val}<span class="unit">${val==="–"?"":unit}</span></div><div class="sub">${sub||""}</div></div>`;
+function paintKeyTile(id,k){const el=$("#"+id),t=tileData(k);el.querySelector(".lbl").textContent=t.lbl;paintTile(el,t)}
+
+// ---------- Energie: zon + dynamo → woonaccu → verbruikers ----------
 function renderEnergy(){
-  if(!$("#en").classList.contains("on"))return;
-  const v=S.values;
-  $("#enTiles").innerHTML=ENERGY.filter(k=>SMAP[k]).map(k=>{const [,n,u,d]=SMAP[k],x=v[k],age=S.age[k];
-    const val=x==null?"–":typeof x==="number"?fmt(x,d):`<span style="font-size:22px">${esc(x)}</span>`;
-    return `<div class="tile${x==null||(age!=null&&age>15)?" stale":""}"><div class="lbl">${n}</div><div class="val">${val}<span class="unit">${typeof x==="string"?"":u}</span></div></div>`}).join("");
+  if(!isOn("en"))return;
+  const sv=vic("shunt_v"),sa=vic("shunt_a"),soc=vic("shunt_soc"),mw=vic("mppt_w"),my=vic("mppt_yield_wh"),
+    ov=vic("orion_out_v"),oa=vic("orion_out_a"),ost=vic("orion_state"),rest=vic("shunt_rest_min"),car=V("voltage");
+  const ow=ov!=null&&oa!=null?ov*oa:null,bw=sv!=null&&sa!=null?sv*sa:null,use=bw!=null?(mw||0)+(ow||0)-bw:null;
+  const flow=(w,c)=>`<i style="background:${c};color:${c};opacity:${w!=null&&w>5?1:.25}"></i>`;
+  const charging=sa!=null&&sa>0.2;
+  $("#enBody").innerHTML=
+   `<div class="grid2" style="margin-bottom:0">${box("Zon",fmt(mw,0),"W",`vandaag ${fmt(my,0)} Wh`,mw==null?"stale":"")}
+     ${box("Dynamo · DC-DC",fmt(ow,0),"W",`${ost!=null?esc(ost):"–"} · ${fmt(oa,1)} A`,ow==null?"stale":"")}</div>
+    <div class="flow">${flow(mw,"var(--solar)")}${flow(ow,"var(--accent)")}</div>
+    <div class="tile accu${soc==null?" stale":""}" style="${soc!=null?"border:2px solid var(--ok)":""}">
+     ${ring(soc,150,14,soc!=null&&soc<20?"var(--warn)":"var(--ok)",`<span class="rv">${fmt(soc,0)}</span><span class="ru">%</span>`)}
+     <div class="accustats"><div class="lbl">Woonaccu</div>
+      <div class="sub" style="color:${charging?"var(--ok)":"var(--dim)"};font-weight:600">${bw==null?"geen gegevens":charging?`laadt +${fmt(bw,0)} W`:`ontlaadt ${fmt(-bw,0)} W`}</div>
+      <div><span class="dim">spanning</span><b>${fmt(sv,2)} V</b></div><div><span class="dim">stroom</span><b>${sa!=null&&sa>0?"+":""}${fmt(sa,1)} A</b></div>
+      <div><span class="dim">resterend</span><b>${charging?"– laadt":fmtRest(rest)}</b></div></div></div>
+    <div class="flow one">${flow(use,"var(--dim)")}</div>
+    ${box("Verbruikers [berekend]",fmt(use,0),"W","zon + DC-DC − woonaccu",use==null?"stale":"wide")}
+    ${box("Accu auto",fmt(car,2),"V",(V("rpm")||0)>500?"dynamo laadt · voedt DC-DC":"motor uit",car==null?"stale wide":"wide")}`;
 }
-setInterval(renderEnergy,1000);
+
+// ---------- Kampeermodus + dimmen ----------
+function setDim(d){document.documentElement.classList.remove("dim-avond","dim-nacht");if(d!=="dag")document.documentElement.classList.add("dim-"+d);
+  document.querySelectorAll("[data-dim]").forEach(b=>b.classList.toggle("on",b.dataset.dim===d));try{localStorage.setItem("dim",d)}catch(e){}}
+document.querySelectorAll("[data-dim]").forEach(b=>b.onclick=()=>setDim(b.dataset.dim));
+{let d="dag";try{d=localStorage.getItem("dim")||"dag"}catch(e){}setDim(d)}
+function renderKamp(){
+  if(!isOn("kamp"))return;
+  const soc=vic("shunt_soc"),sv=vic("shunt_v"),sa=vic("shunt_a"),bw=sv!=null&&sa!=null?sv*sa:null,mw=vic("mppt_w"),my=vic("mppt_yield_wh");
+  const st=vic("shunt_starter_v"),nacht=document.documentElement.classList.contains("dim-nacht");
+  $("#kampBody").innerHTML=`<div class="tile kamphero${soc==null?" stale":""}">${ring(soc,210,16,"var(--ok)",`<span class="rv" style="font-size:84px">${fmt(soc,0)}</span><span class="ru">%</span><span class="rs">${fmt(sv,2)} V</span>`)}
+     ${nacht?'<p class="miles">“Welterusten. Ik let op de accu’s.”</p>':""}</div>
+   <div class="grid2">${box("Verbruik nu",bw==null?"–":fmt(Math.abs(bw),0),"W",sa==null?"":`${fmt(sa,1)} A ${sa>0?"laden":"ontladen"}`,bw==null?"stale":"")}
+    ${box("Resterend",sa!=null&&sa>0?"laadt":fmtRest(vic("shunt_rest_min")),"","bij dit verbruik",vic("shunt_rest_min")==null&&!(sa>0)?"stale":"")}</div>
+   ${box("Zon",fmt(mw,0),"W",mw==null?`buiten bereik · vandaag ${fmt(my,0)} Wh`:`vandaag ${fmt(my,0)} Wh`,mw==null?"stale wide":"wide")}
+   ${box("Startaccu",fmt(st,2),"V",st==null?"hulpingang SmartShunt niet als startaccu ingesteld":"rust · via SmartShunt",st==null?"stale wide":"wide")}`;
+}
+
+// ---------- Hitte & bergop: trends 10 min ----------
+function spark(k,lo,hi,lines,ref){
+  const h=S.history,tn=h.length?h[h.length-1].t:0,pts=h.filter(p=>p[k]!=null&&p.t>=tn-600000);
+  const W=360,H=110,Y=v=>H-Math.max(0,Math.min(1,(v-lo)/(hi-lo)))*H,X=t=>(t-(tn-600000))/600000*W;
+  const l=lines.filter(([x])=>x!=null).map(([x,c])=>`<path d="M0 ${Y(x)} H${W}" stroke="${c}" stroke-width="1.5" stroke-dasharray="5 5"/>`).join("")+
+    (ref!=null?`<path d="M0 ${Y(ref)} H${W}" stroke="var(--na)" stroke-width="1.5" stroke-dasharray="2 5"/>`:"");
+  const d=pts.map((p,i)=>`${i?"L":"M"}${X(p.t).toFixed(1)} ${Y(p[k]).toFixed(1)}`).join(" ");
+  const rate=(()=>{const old=pts.find(p=>p.t>=tn-60000);return old&&pts.length?pts[pts.length-1][k]-old[k]:null})();
+  return {svg:`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${l}${d?`<path d="${d}" stroke="var(--accent)" stroke-width="3" fill="none" stroke-linejoin="round"/>`:""}</svg>`,rate,n:pts.length};
+}
+function renderHitte(){
+  if(!isOn("hitte"))return;
+  APP.pollHistory();const al=APP.CFG.alarms||{},amb=V("ambient");
+  const trend=(k,lo,hi,thr,ref,extra)=>{const t=tileData(k),s=spark(k,lo,hi,thr,ref);
+    const r=s.rate==null?"":`${s.rate>=0?"+":""}${fmt(s.rate,1)} °C/min`;
+    return `<div class="tile wide ${t.cls}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="lbl">${t.lbl}</div><div class="sub" style="color:var(--txt)">${r}${extra?" · "+extra:""}</div></div>
+      <div class="val" style="margin:0">${t.val}<span class="unit">${t.unit}</span></div></div>${s.n?s.svg:'<p class="dim" style="margin:10px 0">nog geen trend</p>'}
+      <div class="axis"><span>−10 min</span>${thr.filter(([x])=>x!=null).map(([x,c])=>`<span style="color:${c}">${fmt(x,0)}</span>`).join("")}<span>nu</span></div>${t.sub?`<div class="sub">${esc(t.sub)}</div>`:""}</div>`};
+  const iat=V("iat");
+  $("#hitteBody").innerHTML=trend("coolant",70,120,[[al.coolant?.oranje,"var(--warn)"],[al.coolant?.rood,"var(--bad)"]],null,"")+
+    trend("iat",10,90,[[al.iat?.oranje,"var(--warn)"],[al.iat?.rood,"var(--bad)"]],amb,iat!=null&&amb!=null?`${fmt(iat-amb,0)} °C boven buiten`:"");
+  paintKeyTile("h_load","load");paintKeyTile("h_ambient","ambient");paintKeyTile("h_boost_act","boost_act");
+  const baro=V("baro");$("#h_ambient .sub").textContent=baro!=null?`luchtdruk ${fmt(baro/100,2)} bar`:"";
+}
+
+// ---------- Gravel / offroad ----------
+function renderGravel(){
+  if(!isOn("gravel"))return;
+  const sp=V("speed"),row=k=>{const t=tileData(k);return `<div class="tile hrow ${t.cls}"><div><div class="lbl">${t.lbl}</div><div class="sub">${t.unit}${t.sub?" · "+esc(t.sub):""}</div></div><div class="val">${t.val}</div></div>`};
+  $("#gravelBody").innerHTML=`<div class="tile wide${sp==null?" stale":""}"><div class="lbl">Snelheid</div>
+     <div class="val" style="font-size:180px;line-height:.9;margin-top:10px">${fmt(sp,0)}<span class="unit" style="font-size:26px">km/u</span></div>
+     <div class="meter big"><i style="width:${sp==null?0:Math.min(100,sp/40*100)}%"></i><b style="left:25%"></b><b style="left:50%"></b><b style="left:75%"></b></div>
+     <div class="axis"><span>0</span><span>10</span><span>20</span><span>30</span><span>40 km/u</span></div></div>`+row("rpm")+row("load")+row("coolant");
+}
+setInterval(()=>{renderEnergy();renderKamp();renderHitte();renderGravel()},1000);
 setInterval(tick,400);
 
 // ---------- grafieken ----------
@@ -430,7 +554,8 @@ const SERIES={c1:[["coolant","#ff9f1a","koelvloeistof"],["oil","#ff3b30","olie"]
 function drawCharts(){
   if(!$("#gr").classList.contains("on"))return;
   APP.pollHistory();
-  const h=S.history.map(p=>({...p,load40:p.load==null?null:p.load*40}));
+  const b=x=>x==null?null:x/100;// turbodruk kPa → bar
+  const h=S.history.map(p=>({...p,load40:p.load==null?null:p.load*40,boost_act:b(p.boost_act),boost_cmd:b(p.boost_cmd)}));
   for(const id in SERIES){
     const cv=$("#"+id),r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
     cv.width=r.width*dpr;cv.height=r.height*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);
@@ -442,7 +567,7 @@ function drawCharts(){
     if(hi-lo<1){hi+=1;lo-=1}const pd=(hi-lo)*.08;lo-=pd;hi+=pd;
     const t0=h[0].t,t1=h[h.length-1].t,X=t=>L+(t-t0)/Math.max(t1-t0,1)*(W-L-6),Y=v=>(H-B)-(v-lo)/(hi-lo)*(H-B-6);
     g.strokeStyle="#252c35";g.lineWidth=1;
-    for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W,y);g.stroke();g.fillText(Math.round(v),2,y+4)}
+    for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W,y);g.stroke();g.fillText(hi-lo<10?fmt(v,1):fmt(v,0),2,y+4)}
     g.fillText(`-${Math.round((t1-t0)/60000)} min`,L,H-2);g.fillText("nu",W-20,H-2);
     for(const [k,c] of SERIES[id]){g.strokeStyle=c;g.lineWidth=2;g.beginPath();let on=false;
       for(const p of h){if(p[k]==null){on=false;continue}const x=X(p.t),y=Y(p[k]);on?g.lineTo(x,y):g.moveTo(x,y);on=true}g.stroke()}
@@ -488,15 +613,18 @@ $("#clearBtn").onclick=async()=>{
 
 // ---------- rit ----------
 function renderTrip(){
-  if(!S.trip){$("#trip").innerHTML='<div class="card" style="grid-column:1/-1">Geen rit actief. Een rit start automatisch zodra de motor draait en stopt als de motor 5 minuten uit staat.</div>';return}
-  const t=S.trip,m=t.max;
-  const rit=[["Afstand",fmt(t.afstand_km,1),"km"],["Brandstof [sch.]",fmt(t.brandstof_l,1),"L"],
-   ["Gem. verbruik [sch.]",t.afstand_km>1?fmt(t.brandstof_l/t.afstand_km*100,1):"–","L/100"],["Alarmen or./rood",`${t.alarmen.oranje}/${t.alarmen.rood}`,""],
-   ["Geladen woonaccu (Orion)",t.orion_ah!=null?fmt(t.orion_ah,1):"–","Ah"],
-   ["Rijtijd",hm(t.rijtijd_s),"u:m"],["Stationair",hm(t.stationair_s),"u:m"],
-   ["Gem. snelheid",t.rijtijd_s>0?fmt(t.afstand_km/(t.rijtijd_s/3600),0):"–","km/u"],["Max koelvloeistof",fmt(m.coolant,0),"°C"],
-   ["Max olie",fmt(m.oil,0),"°C"],["Max inlaatlucht",fmt(m.iat,0),"°C"],["Max turbodruk",fmt(m.boost_act,0),"kPa"],["Max toerental",fmt(m.rpm,0),"rpm"]];
-  $("#trip").innerHTML=rit.map(r=>`<div class="tile"><div class="lbl">${r[0]}</div><div class="val" style="font-size:34px">${r[1]}<span class="unit">${r[2]}</span></div></div>`).join("");
+  if(!S.trip){$("#trip").innerHTML='<div class="card">Geen rit actief. Een rit start automatisch zodra de motor draait en stopt als de motor 5 minuten uit staat.</div>';$("#tripDet").innerHTML="";return}
+  const t=S.trip,m=t.max,l100=t.afstand_km>1?t.brandstof_l/t.afstand_km*100:null;
+  $("#trip").innerHTML=`<div class="tile wide"><div class="row" style="justify-content:space-between"><div class="lbl">Verbruik deze rit</div>
+      <span class="tag" style="border:1px solid var(--na);color:var(--dim)">SCHATTING</span></div>
+     <div class="val" style="font-size:96px;line-height:.9;margin-top:10px">${fmt(l100,1)}<span class="unit" style="font-size:20px">L/100 km</span></div>
+     <div class="sub">brandstof ${fmt(t.brandstof_l,1)} L${S.tank.factor&&S.tank.factor!==1?` · kalibratie ×${fmt(S.tank.factor,3)}`:""}</div></div>
+   <div class="grid2">${box("Afstand",fmt(t.afstand_km,1),"km","")}${box("Rijtijd",hm(t.rijtijd_s),"u",`stationair ${hm(t.stationair_s)}`)}</div>
+   ${box("Gem. snelheid",t.rijtijd_s>0?fmt(t.afstand_km/(t.rijtijd_s/3600),0):"–","km/u","rijdend, zonder stilstand","wide")}`;
+  const det=[["Alarmen oranje / rood",`${t.alarmen.oranje} / ${t.alarmen.rood}`],["Geladen woonaccu (Orion)",t.orion_ah!=null?`${fmt(t.orion_ah,1)} Ah`:"–"],
+   ["Max koelvloeistof",`${fmt(m.coolant,0)} °C`],["Max olie",`${fmt(m.oil,0)} °C`],["Max inlaatlucht",`${fmt(m.iat,0)} °C`],
+   ["Max turbodruk",m.boost_act!=null?`${fmt(m.boost_act/100,2)} bar`:"–"],["Max toerental",`${fmt(m.rpm,0)} rpm`]];
+  $("#tripDet").innerHTML=det.map(([a,b])=>`<tr><td class="dim">${a}</td><td><b>${b}</b></td></tr>`).join("");
 }
 function loadRitten(){
   renderTrip();
