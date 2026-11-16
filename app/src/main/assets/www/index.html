@@ -129,6 +129,10 @@ details>summary::-webkit-details-marker{display:none}
 .cnt b{font:600 40px/1 var(--num)}.cnt span{font-size:13px;color:var(--dim)}
 .cnt.warn{background:var(--warnbg);border:2px solid var(--warn)}.cnt.warn b{color:var(--warn)}.cnt.warn span{color:var(--txt)}
 [hidden]{display:none!important}
+.lrows{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:12px}
+.lrow{display:flex;align-items:center;gap:10px;width:100%;min-height:58px;padding:0 16px;border:none;border-bottom:1px solid var(--line);background:none;color:var(--txt);font:17px var(--sans);text-align:left}
+.lrow:last-child{border-bottom:none}.lrow span{flex:1}.lrow em{font-style:normal;font-size:14px;color:var(--dim)}.lrow b{color:var(--dim);font-size:20px}
+.srow{display:flex;align-items:center;gap:10px;min-height:32px;font-size:16px}
 /* Dimstanden (Kampeermodus): avond ~75 %, nacht = gedimde aardetinten zonder fel wit */
 html.dim-avond body{filter:brightness(.75)}
 html.dim-nacht{--bg:#0A0907;--card:#12100D;--card2:#14120E;--navbg:#0A0907;--actbg:#1A1813;--line:#1C1A15;--txt:#8C8270;--dim:#6E6450;--na:#3A3429;--ok:#6B7745;--accent:#8C8270;--warn:#A85F2E;--solar:#8F6E33}
@@ -272,20 +276,30 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 </section>
 
 <section id="set">
+  <div id="setMenu">
+    <div class="card" id="setStat"></div>
+    <div class="lrows">
+      <button class="lrow" data-sp="verb"><span>Verbindingen</span><em id="sumVerb"></em><b>›</b></button>
+      <button class="lrow" data-sp="logs"><span>Meting &amp; logbestanden</span><em id="sumLogs"></em><b>›</b></button>
+      <button class="lrow" data-go="tank"><span>Tankbeurt-kalibratie</span><em id="sumTank"></em><b>›</b></button>
+      <button class="lrow" data-go="ond"><span>Onderhoud (km)</span><em id="sumOnd"></em><b>›</b></button>
+      <button class="lrow" data-sp="grenzen"><span>Alarmgrenzen</span><em></em><b>›</b></button>
+      <button class="lrow" data-sp="weergave"><span>Weergave &amp; dimmen</span><em id="sumDim"></em><b>›</b></button>
+      <button class="lrow" data-go="sens"><span>Niet-geverifieerde PID's</span><em id="sumOnz"></em><b>›</b></button>
+      <button class="lrow" data-sp="backup"><span>Back-up</span><em></em><b>›</b></button>
+    </div>
+  </div>
+  <button class="btn ghost" id="setBack" hidden style="margin-bottom:12px">‹ Instellingen</button>
+  <div class="sp" data-spp="verb" hidden>
   <div class="card" id="battery" style="display:none;border-color:var(--warn)"><h3>Batterijbeperking staat aan</h3>
     <p>Samsung kan de meting op de achtergrond stilleggen. Zet de batterij voor Sprinter OBD op <b>Onbeperkt</b>.</p>
     <button class="btn" id="batBtn">Batterijbeperking uitzetten</button></div>
-  <div class="card"><h3>Meting</h3>
+  <div class="card"><h3>OBD-dongle en meting</h3>
     <p class="dim">De meting draait als achtergronddienst (vaste melding in de statusbalk) en gaat door met scherm uit of in een andere app.
     Ritten starten en stoppen automatisch. De dienst stopt zichzelf als de auto 15 minuten niet antwoordt.</p>
     <select id="dev" style="width:100%;margin-bottom:10px"></select>
     <div class="row"><button class="btn" id="connBtn">Meting starten</button><button class="btn ghost" id="stopBtn">Meting stoppen</button></div>
     <p class="dim" id="connInfo"></p></div>
-  <div class="card"><h3>Logbestanden</h3>
-    <p class="dim">Na elke rit worden de ritlog en het DID-onderzoek <b>automatisch</b> naar <b>Downloads/SprinterOBD</b> gekopieerd
-      (Mijn bestanden → Downloads → SprinterOBD). Hieronder zie je per bestand of dat gelukt is.</p>
-    <div class="row" style="margin-bottom:8px"><button class="btn ghost" id="expAll">Alles exporteren wat nog niet geëxporteerd is</button><span class="dim" id="expMsg"></span></div>
-    <div class="scroll"><table id="files"></table></div></div>
   <div class="card"><h3>Victron-apparaten (Orion XS, SmartShunt, MPPT)</h3>
     <p class="dim">De app luistert alleen mee met de Bluetooth-uitzending ("Onmiddellijk uitlezen via Bluetooth"); hij maakt geen
       verbinding en stuurt niets. Per apparaat: VictronConnect → apparaat → ⚙ → Productinformatie → Encryptie gegevens.
@@ -296,15 +310,34 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
     <div class="row" style="margin-bottom:8px"><input id="orKey" type="password" placeholder="encryptiesleutel (32 tekens)" style="width:100%" autocomplete="off" spellcheck="false"></div>
     <div class="row"><button class="btn" id="orSave">Opslaan</button><span class="dim" id="orMsg"></span></div>
     <p class="dim" id="orStat" style="margin-bottom:0"></p></div>
+  <div class="card"><h3>Gebeurtenissen verbinding</h3><pre id="evlog"></pre></div>
+  </div>
+  <div class="sp" data-spp="logs" hidden>
+  <div class="card"><h3>Logbestanden</h3>
+    <p class="dim">Na elke rit worden de ritlog en het DID-onderzoek <b>automatisch</b> naar <b>Downloads/SprinterOBD</b> gekopieerd
+      (Mijn bestanden → Downloads → SprinterOBD). Hieronder zie je per bestand of dat gelukt is.</p>
+    <div class="row" style="margin-bottom:8px"><button class="btn ghost" id="expAll">Alles exporteren wat nog niet geëxporteerd is</button><span class="dim" id="expMsg"></span></div>
+    <div class="scroll"><table id="files"></table></div></div>
   <div class="card"><h3>DID-onderzoek (Mercedes Mode 22)</h3>
     <label class="row"><input type="checkbox" id="didOn" style="width:22px;height:22px"> Tijdens het rijden telkens één van de 108 live-DID's meelezen en loggen</label></div>
+  </div>
+  <div class="sp" data-spp="grenzen" hidden>
   <div class="card"><h3>Alarmgrenzen</h3>
+    <p class="dim">Oranje = waarschuwing, rood = kritiek. Deze grenzen bepalen ook de kleuren op de dashboards en de status van Miles.</p>
     <textarea id="cfgTxt" spellcheck="false"></textarea>
     <div class="row" style="margin-top:8px"><button class="btn" id="cfgSave">Opslaan</button><button class="btn ghost" id="cfgReset">Standaardwaarden</button><span class="dim" id="cfgMsg"></span></div></div>
-  <div class="card"><h3>Gebeurtenissen verbinding</h3><pre id="evlog"></pre></div>
+  </div>
+  <div class="sp" data-spp="weergave" hidden>
+  <div class="card"><h3>Helderheid</h3><p class="dim">Avond dimt de hele app; Nacht gebruikt gedimde aardetinten zonder fel wit. Ook te kiezen op het dashboard Kampeermodus.</p>
+    <div class="seg" role="group" aria-label="Helderheid" style="margin:0"><button data-dim="dag">Dag</button><button data-dim="avond">Avond</button><button data-dim="nacht">Nacht</button></div></div>
+  <div class="card"><h3>Dashboards</h3><p class="dim">Welke dashboards je ziet en in welke volgorde kies je in de Dashboardbibliotheek.</p>
+    <button class="btn ghost" style="width:100%" onclick="show('lib','dash')">Naar Dashboardbibliotheek</button></div>
+  </div>
+  <div class="sp" data-spp="backup" hidden>
   <div class="card"><h3>Gegevens exporteren</h3>
-    <p class="dim">Ritten, gezondheid, Mode 06-historie en tankbeurten als één JSON-bestand in Downloads/SprinterOBD (back-up).</p>
+    <p class="dim">Ritten, gezondheid, Mode 06-historie, tankbeurten, onderhoud en je dashboardkeuze als één JSON-bestand in Downloads/SprinterOBD (back-up).</p>
     <button class="btn ghost" id="backupBtn">Back-up maken</button> <span class="dim" id="backupMsg"></span></div>
+  </div>
 </section>
 </main>
 
@@ -328,7 +361,7 @@ const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">
  basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
 // ---------- navigatie: 5 hoofdsecties onderin; Dashboards = swipe-carrousel uit de bibliotheek ----------
-const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy,lib:renderLib,rijden:()=>renderRijden(true),
+const loaders={rit:loadRitten,gz:loadHealth,set:()=>{setPanel(null);loadSettings()},gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy,lib:renderLib,rijden:()=>renderRijden(true),
   hitte:renderHitte,gravel:renderGravel,kamp:renderKamp};
 // [id, naam, sectie, omschrijving, standaard aan]
 const DASHES=[["rijden","Rijden","rijden","Snelheid, toerental, koelvloeistof, turbodruk, belasting, accu auto",true],
@@ -855,6 +888,37 @@ function loadSettings(){
     <td>${f.lopend?'<span class="tag no">lopende rit</span>':f.exported?'<span class="tag ok">✓ geëxporteerd</span>':'<span class="tag bad">nog niet</span>'}</td>
     <td><button class="btn small${f.exported?" ghost":""}" data-exp="${esc(f.name)}">${f.exported?"Opnieuw":"Exporteren"}</button> <button class="btn small ghost" data-del="${esc(f.name)}">Verwijderen</button></td></tr>`).join(""):'<tr><td class="dim">Nog geen logbestanden.</td></tr>';
 }
+// ---------- instellingen: menu met status → deelpaneel (2 tikken) ----------
+const SPNAME={verb:"Verbindingen",logs:"Meting & logbestanden",grenzen:"Alarmgrenzen",weergave:"Weergave & dimmen",backup:"Back-up"};
+function setPanel(p){
+  $("#setMenu").hidden=!!p;$("#setBack").hidden=!p;
+  document.querySelectorAll("[data-spp]").forEach(e=>e.hidden=e.dataset.spp!==p);
+  $("#title").textContent=p?SPNAME[p]:"Instellingen";scrollTo(0,0);
+  if(!p)renderSetMenu();
+}
+$("#setBack").onclick=()=>setPanel(null);
+document.querySelector("#setMenu .lrows").onclick=e=>{const b=e.target.closest(".lrow");if(!b)return;
+  if(b.dataset.sp)return setPanel(b.dataset.sp);
+  if(b.dataset.go==="tank"){show("rit","dash");setTimeout(()=>$("#tankCard").scrollIntoView({behavior:"smooth"}),50)}
+  if(b.dataset.go==="ond"){show("gz","miles");setTimeout(()=>$("#mOnd").scrollIntoView({behavior:"smooth"}),50)}
+  if(b.dataset.go==="sens")show("sens","dash")};
+function renderSetMenu(){
+  const c=S.conn,vl=S.victron||[],vok=vl.filter(d=>d.leeftijd_s!=null&&d.leeftijd_s<90).length,bat=Native.batteryOk();
+  const dot=(ok,warn)=>`<span class="dot" style="background:${ok?"var(--ok)":warn?"var(--warn)":"var(--na)"}"></span>`;
+  const run=Native.serviceRunning?Native.serviceRunning():true;
+  $("#setStat").innerHTML=`<div class="srow">${dot(c.status==="verbonden",c.status==="verbinden"||c.status==="opstarten")}<span>OBD-dongle: ${esc(c.status||"–")}</span></div>
+    <div class="srow">${dot(vl.length&&vok===vl.length,vok<vl.length)}<span>Energie-apparaten: ${vl.length?`${vok} van ${vl.length} in bereik`:"nog geen apparaten"}</span></div>
+    <div class="srow">${dot(run,!run)}<span>Meting op de achtergrond: ${run?"aan":"uit"}</span></div>
+    ${bat?"":`<div class="srow">${dot(false,true)}<span style="color:var(--warn)">Batterijbeperking staat aan</span></div><button class="btn" style="width:100%;margin-top:8px" onclick="Native.askBattery()">Batterijbeperking uitzetten</button>`}`;
+  $("#sumVerb").textContent=vl.length?`${vok}/${vl.length} energie`:"";
+  try{const f=JSON.parse(Native.listFiles()),open=f.filter(x=>!x.exported&&!x.lopend).length;$("#sumLogs").textContent=open?`${open} niet geëxporteerd`:"alles geëxporteerd";
+    $("#sumLogs").style.color=open?"var(--warn)":"var(--ok)"}catch(e){}
+  $("#sumTank").textContent=S.tank.factor&&S.tank.factor!==1?`×${fmt(S.tank.factor,3)}`:"niet gekalibreerd";
+  const o=onderhoud();$("#sumOnd").textContent=o.length?`${o.length} punt${o.length>1?"en":""}`:"";
+  let d="dag";try{d=localStorage.getItem("dim")||"dag"}catch(e){}$("#sumDim").textContent=d;
+  $("#sumOnz").textContent=APP.CFG.onzeker?"aan":"uit";
+}
+setInterval(()=>{if(isOn("set")&&!$("#setMenu").hidden)renderSetMenu()},2000);
 $("#expAll").onclick=()=>{$("#expMsg").textContent="bezig…";setTimeout(()=>{const r=Native.exportPending();loadSettings();$("#expMsg").textContent=r},50)};
 $("#files").onclick=async e=>{
   const x=e.target.dataset.exp,d=e.target.dataset.del;
