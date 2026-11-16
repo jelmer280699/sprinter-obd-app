@@ -67,6 +67,28 @@ textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.78);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
 .modal.on{display:flex}
 .modal .box{background:var(--card);border:2px solid var(--bad);border-radius:18px;padding:20px;max-width:520px;width:100%}
+.subnav{align-items:center}
+.dots{display:flex;align-items:center;gap:6px;flex:1}
+.dots span{width:7px;height:7px;border-radius:4px;background:var(--line)}.dots span.on{width:24px;background:var(--accent)}
+.hero{position:relative;background:var(--card);border:1px solid var(--line);border-radius:18px;height:330px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.hero svg{width:300px;height:264px}
+.heroval{position:absolute;left:0;right:0;top:118px;display:flex;flex-direction:column;align-items:center}
+.heroval .v{font:600 120px/.9 var(--num);font-variant-numeric:tabular-nums}.heroval .u{font-size:20px;color:var(--dim)}
+.hero.stale .v{color:var(--na)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.tile.wide{margin-bottom:12px}
+.tile .meter{height:8px;border-radius:4px;background:var(--line);margin-top:10px;position:relative}
+.tile .meter i{display:block;height:8px;border-radius:4px;background:var(--accent);width:0}
+.tile .meter b{position:absolute;top:-3px;width:2px;height:14px;background:var(--warn)}.tile .meter b.r{background:var(--bad)}
+.tile.oranje .meter i{background:var(--warn)}.tile.rood .meter i{background:var(--bad)}
+.librow{display:flex;align-items:center;gap:6px;min-height:76px;padding:6px 8px 6px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:8px}
+.libtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.libtxt b{font-size:17px}.libtxt span{font-size:13px;color:var(--dim)}
+.sw{width:60px;height:48px;border:none;background:none;padding:0;display:flex;align-items:center;justify-content:center;flex:none}
+.sw i{width:52px;height:30px;border-radius:15px;background:var(--line);position:relative;display:block}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:12px;background:var(--dim);transition:left .15s}
+.sw.on i{background:var(--ok)}.sw.on i::after{left:25px;background:var(--bg)}
+.mv{width:48px;height:48px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--accent);font-size:16px}
+.mv:disabled{opacity:.3}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:45vh;overflow:auto;color:var(--dim)}
 </style>
@@ -77,12 +99,8 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 <header>
   <div class="top"><h1 id="title">Overzicht</h1>
     <div id="conn"><span id="ctxt">opstarten…</span><span class="dot" id="cdot"></span></div></div>
-  <div class="subnav" id="sub">
-    <button data-s="ov" class="on">Overzicht</button>
-    <button data-s="gr">Grafieken</button>
-    <button data-s="rit">Trip &amp; verbruik</button>
-    <button data-s="sens">Alle sensoren</button>
-  </div>
+  <div class="subnav" id="sub"><div class="dots" id="dots" aria-hidden="true"></div>
+    <button id="libBtn" aria-label="Dashboardbibliotheek openen">Bibliotheek</button></div>
 </header>
 <nav class="bottom" aria-label="Hoofdnavigatie">
   <button data-g="dash" class="on"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg></span>Dashboards</button>
@@ -95,7 +113,24 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 <section id="en"><div class="grid" id="enTiles"></div>
   <p class="dim" style="font-size:13px">Voorlopige weergave van de woonaccu, zon en DC-DC-lader. De energiestroom volgt in stap 3.</p></section>
 
-<section id="ov" class="on"><div class="grid" id="tiles"></div><p class="dim" id="logline" style="font-size:13px"></p></section>
+<section id="rijden">
+  <div class="hero" id="hero"><svg viewBox="0 0 340 300" fill="none" aria-hidden="true">
+    <path d="M55.1 266.4 A150 150 0 1 1 284.9 266.4" stroke="#3A3429" stroke-width="14" stroke-linecap="round"/>
+    <path id="spArc" d="M55.1 266.4 A150 150 0 1 1 284.9 266.4" stroke="#D9C49A" stroke-width="14" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+    <path d="M306 177 L332 178.4" stroke="#E2823F" stroke-width="4" stroke-linecap="round"/></svg>
+    <div class="heroval"><span class="v" id="spVal">–</span><span class="u">km/u</span></div></div>
+  <div class="grid2"><div class="tile" id="r_rpm"></div><div class="tile" id="r_coolant"></div></div>
+  <div class="tile wide" id="r_boost_act"></div>
+  <div class="grid2"><div class="tile" id="r_load"></div><div class="tile" id="r_voltage"></div></div>
+</section>
+
+<section id="lib">
+  <p class="dim" style="margin-top:0"><span id="libCount"></span> · bovenste = eerste bij swipen. Swipe links/rechts op een dashboard om te wisselen.</p>
+  <div id="libList"></div>
+  <button class="btn ghost" id="libReset" style="width:100%">Standaard herstellen</button>
+</section>
+
+<section id="ov"><div class="grid" id="tiles"></div><p class="dim" id="logline" style="font-size:13px"></p></section>
 
 <section id="gr">
   <div class="chart"><h3>Temperaturen (°C)</h3><canvas id="c1"></canvas><div class="legend" id="l1"></div></div>
@@ -194,31 +229,70 @@ if(!window.Native)document.write('<script src="mock.js"><\/script>')</script>
 <script src="app.js"></script>
 <script>
 const $=s=>document.querySelector(s), S=APP.S;
-const fmt=(v,d)=>v==null||Number.isNaN(v)?"–":Number(v).toFixed(d);
+// Nederlandse notatie: decimale komma, duizendtal-punt (2.140 rpm, 1,82 bar)
+const fmt=(v,d)=>v==null||Number.isNaN(Number(v))?"–":Number(v).toLocaleString("nl-NL",{minimumFractionDigits:d,maximumFractionDigits:d});
 const hm=x=>{x=Math.round(x||0);return `${Math.floor(x/3600)}:${String(Math.floor(x%3600/60)).padStart(2,"0")}`};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ST={ok:'<span class="tag ok">normaal</span>',oranje:'<span class="tag no">let op</span>',rood:'<span class="tag bad">controleren</span>',
  basislijn:'<span class="dim">basislijn opbouwen</span>',"geen data":'<span class="dim">nog geen meting</span>'};
 
-// ---------- navigatie: 5 hoofdsecties onderin; Dashboards heeft (voorlopig) subtabs ----------
-const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy};
-const GROUPS={dash:["ov","gr","rit","sens"],miles:["gz"],en:["en"],dtc:["dtc"],set:["set"]};
-const TITLES={ov:"Overzicht",gr:"Grafieken",rit:"Trip & verbruik",sens:"Alle sensoren",gz:"Hoe gaat het met Miles?",en:"Energie",dtc:"Foutcodes",set:"Instellingen"};
-let lastDash="ov";
+// ---------- navigatie: 5 hoofdsecties onderin; Dashboards = swipe-carrousel uit de bibliotheek ----------
+const loaders={rit:loadRitten,gz:loadHealth,set:loadSettings,gr:drawCharts,sens:()=>renderSensors(true),en:renderEnergy,lib:renderLib,rijden:()=>renderRijden(true)};
+// [id, naam, sectie, omschrijving, standaard aan]
+const DASHES=[["rijden","Rijden","rijden","Snelheid, toerental, koelvloeistof, turbodruk, belasting, accu auto",true],
+ ["mijn","Mijn tegels","ov","Je eigen tegels; kiezen en ordenen in Alle sensoren",true],
+ ["trip","Trip & verbruik","rit","Huidige rit, verbruik [schatting], tankbeurt, ritten",true],
+ ["grafieken","Grafieken","gr","Temperaturen, turbodruk, raildruk, toerental · 15 min",false],
+ ["sensoren","Alle sensoren","sens","Elke waarde die de app leest, als lijst",false]];
+const DBYID=Object.fromEntries(DASHES.map(d=>[d[0],d])),DBYSEC=Object.fromEntries(DASHES.map(d=>[d[2],d]));
+function dashCfg(){
+  let c;try{c=JSON.parse(localStorage.getItem("dashboards"))}catch(e){}
+  if(!c||!Array.isArray(c.order)||!c.on||typeof c.on!=="object")c={order:[],on:{}};
+  c.order=c.order.filter(id=>DBYID[id]);
+  for(const d of DASHES)if(!c.order.includes(d[0])){c.order.push(d[0]);if(!(d[0] in c.on))c.on[d[0]]=d[4]}
+  return c}
+function saveDash(c){try{localStorage.setItem("dashboards",JSON.stringify(c))}catch(e){}}
+function activeSecs(){const c=dashCfg(),a=c.order.filter(id=>c.on[id]);return (a.length?a:["rijden"]).map(id=>DBYID[id][2])}
+const GROUPS={dash:[...DASHES.map(d=>d[2]),"lib"],miles:["gz"],en:["en"],dtc:["dtc"],set:["set"]};
+const TITLES={...Object.fromEntries(DASHES.map(d=>[d[2],d[1]])),lib:"Dashboardbibliotheek",gz:"Hoe gaat het met Miles?",en:"Energie",dtc:"Foutcodes",set:"Instellingen"};
+let lastDash=activeSecs()[0],cur="";
 function show(s){
-  if(!TITLES[s])s="ov";
-  const g=Object.keys(GROUPS).find(k=>GROUPS[k].includes(s));
+  if(!TITLES[s])s=activeSecs()[0];
+  const g=Object.keys(GROUPS).find(k=>GROUPS[k].includes(s));cur=s;
   document.querySelectorAll("main>section").forEach(e=>e.classList.toggle("on",e.id===s));
   document.querySelectorAll("nav.bottom button").forEach(b=>b.classList.toggle("on",b.dataset.g===g));
-  document.querySelectorAll("#sub button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));
   $("#sub").style.display=g==="dash"?"flex":"none";
+  $("#dots").innerHTML=DBYSEC[s]?activeSecs().map(x=>`<span${x===s?' class="on"':""}></span>`).join(""):"";
+  $("#libBtn").classList.toggle("on",s==="lib");
   $("#title").textContent=TITLES[s];
-  if(g==="dash")lastDash=s;
+  if(DBYSEC[s])lastDash=s;
   loaders[s]?.();scrollTo(0,0);
   try{localStorage.setItem("tab",s)}catch(e){}
 }
-document.querySelectorAll("#sub button").forEach(b=>b.onclick=()=>show(b.dataset.s));
-document.querySelectorAll("nav.bottom button").forEach(b=>b.onclick=()=>show(b.dataset.g==="dash"?lastDash:GROUPS[b.dataset.g][0]));
+function swipeDash(dir){const list=activeSecs();if(!DBYSEC[cur]||list.length<2)return;const i=list.indexOf(cur);
+  show(i<0?list[0]:list[(i+dir+list.length)%list.length])}
+document.querySelectorAll("nav.bottom button").forEach(b=>b.onclick=()=>show(b.dataset.g==="dash"?(activeSecs().includes(lastDash)?lastDash:activeSecs()[0]):GROUPS[b.dataset.g][0]));
+$("#libBtn").onclick=()=>show(cur==="lib"?lastDash:"lib");
+{let x0=0,y0=0,skip=false;const m=document.querySelector("main");
+ m.addEventListener("touchstart",e=>{const t=e.touches[0];x0=t.clientX;y0=t.clientY;skip=!!e.target.closest(".scroll,input,select,textarea")},{passive:true});
+ m.addEventListener("touchend",e=>{if(skip)return;const t=e.changedTouches[0],dx=t.clientX-x0,dy=t.clientY-y0;
+   if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)*1.5)swipeDash(dx<0?1:-1)},{passive:true});}
+
+// ---------- dashboardbibliotheek ----------
+function renderLib(){
+  const c=dashCfg(),n=c.order.length;
+  $("#libCount").textContent=`${c.order.filter(id=>c.on[id]).length} van ${n} aan`;
+  $("#libList").innerHTML=c.order.map((id,i)=>{const d=DBYID[id],on=!!c.on[id];
+    return `<div class="librow"><div class="libtxt"><b${on?"":' class="dim"'}>${d[1]}</b><span>${d[3]}</span></div>
+     <button class="sw${on?" on":""}" role="switch" aria-checked="${on}" aria-label="${d[1]} aan of uit" data-tog="${id}"><i></i></button>
+     <button class="mv" aria-label="${d[1]} omhoog" data-mv="${id}" data-d="-1"${i===0?" disabled":""}>▲</button>
+     <button class="mv" aria-label="${d[1]} omlaag" data-mv="${id}" data-d="1"${i===n-1?" disabled":""}>▼</button></div>`}).join("");
+}
+$("#libList").onclick=e=>{const b=e.target.closest("button");if(!b)return;const c=dashCfg();
+  if(b.dataset.tog){const id=b.dataset.tog;c.on[id]=!c.on[id];if(!c.order.some(x=>c.on[x]))c.on[id]=true}
+  if(b.dataset.mv){const i=c.order.indexOf(b.dataset.mv),j=i+Number(b.dataset.d);if(j<0||j>=c.order.length)return;[c.order[i],c.order[j]]=[c.order[j],c.order[i]]}
+  saveDash(c);renderLib()};
+$("#libReset").onclick=()=>{try{localStorage.removeItem("dashboards")}catch(e){}renderLib()};
 
 // ---------- modaal venster (vervangt confirm/alert) ----------
 function ask(title,body,yes,{check=false}={}){
@@ -237,15 +311,15 @@ const closeModal=()=>$("#modal").classList.remove("on");
 const SENSORS=[
  ["rpm","Toerental","rpm",0,"Motor"],["load","Motorbelasting","%",0,"Motor"],["coolant","Koelvloeistof","°C",0,"Motor"],
  ["oil","Motorolie","°C",0,"Motor"],["runtime","Looptijd sinds start","s",0,"Motor"],["mil","Motorlampje","",0,"Motor"],
- ["boost_act","Turbodruk werkelijk","kPa",0,"Lucht & turbo"],["boost_cmd","Turbodruk gevraagd","kPa",0,"Lucht & turbo"],
- ["boost_dev","Turbotekort","kPa",0,"Lucht & turbo"],["maf","Luchtmassa","g/s",1,"Lucht & turbo"],["iat","Inlaatlucht","°C",0,"Lucht & turbo"],
+ ["boost_act","Turbodruk werkelijk","bar",2,"Lucht & turbo"],["boost_cmd","Turbodruk gevraagd","bar",2,"Lucht & turbo"],
+ ["boost_dev","Turbotekort","bar",2,"Lucht & turbo"],["maf","Luchtmassa","g/s",1,"Lucht & turbo"],["iat","Inlaatlucht","°C",0,"Lucht & turbo"],
  ["throttle","Smoorklep","%",0,"Lucht & turbo"],["throttle_cmd","Smoorklep gevraagd","%",0,"Lucht & turbo"],["lambda","Lambda (max 2,0)","λ",2,"Lucht & turbo"],
  ["rail_act","Raildruk werkelijk","bar",0,"Brandstof"],["rail_cmd","Raildruk gevraagd","bar",0,"Brandstof"],["rail_dev","Raildruk-tekort","%",1,"Brandstof"],
  ["fuel","Verbruik [schatting]","",1,"Brandstof"],
  ["voltage","Accuspanning (bij ECU)","V",2,"Elektrisch"],
  ["speed","Snelheid","km/u",0,"Rijden"],["pedal_pct","Gaspedaal","%",0,"Rijden"],["pedal","Gaspedaal sensor D (ruw)","%",1,"Rijden"],
  ["pedal_e","Gaspedaal sensor E (ruw)","%",1,"Rijden"],
- ["ambient","Buitentemperatuur","°C",0,"Omgeving"],["baro","Luchtdruk","kPa",0,"Omgeving"],
+ ["ambient","Buitentemperatuur","°C",0,"Omgeving"],["baro","Luchtdruk","bar",2,"Omgeving"],
  ["orion_in_v","Orion ingangsspanning","V",2,"Orion XS (woonaccu)"],["orion_in_a","Orion ingangsstroom","A",1,"Orion XS (woonaccu)"],
  ["orion_out_v","Orion uitgangsspanning","V",2,"Orion XS (woonaccu)"],["orion_out_a","Orion laadstroom woonaccu","A",1,"Orion XS (woonaccu)"],
  ["orion_state","Orion laadfase","",0,"Orion XS (woonaccu)"],["orion_off","Orion uit-reden","",0,"Orion XS (woonaccu)"],
@@ -272,6 +346,43 @@ function buildTiles(){
   $("#tiles").innerHTML=TILES.map(t=>`<div class="tile" id="t_${t[0]}"><div class="lbl">${t[1]}</div><div class="val">–</div><div class="sub"></div></div>`).join("");
 }
 const ALARMKEY={boost_act:"boost_dev",rail_act:"rail_dev",boost_dev:"boost_dev",rail_dev:"rail_dev"};
+// Intern blijven druk-waarden kPa (alarmen, gezondheid); alleen de weergave is bar.
+const SCALE={boost_act:.01,boost_cmd:.01,boost_dev:.01,baro:.01};
+
+// ---------- tegelcomponent: één bron voor waarde, eenheid, subregel en state ----------
+function tileData(k){
+  const v=S.values,al=S.alarms,[,lbl,u,d]=SMAP[k],a=al[ALARMKEY[k]]||al[k];
+  const age=S.age[k==="fuel"?"maf":k]??99;
+  let val=typeof v[k]==="string"?`<span style="font-size:18px">${esc(v[k])}</span>`:fmt(v[k]==null?null:v[k]*(SCALE[k]||1),d),unit=u,sub="";
+  if(k==="mil"){val=v.mil==null?"–":v.mil?"AAN":"uit";if(v.dtc_count!=null)sub=`${v.dtc_count} code(s)`}
+  if(k==="fuel"){if(v.l100!=null){val=fmt(v.l100,1);unit="L/100";sub=`${fmt(v.fuel_lph,1)} L/u`}else{val=fmt(v.fuel_lph,1);unit="L/u";sub="stilstand"}
+    if(S.tank.factor&&S.tank.factor!==1)sub+=` · ×${fmt(S.tank.factor,3)}`}
+  if(k==="boost_act"&&v.boost_cmd!=null)sub=`gevraagd ${fmt(v.boost_cmd/100,2)} · Δ ${fmt(v.boost_dev/100,2)}`+(v.boost_bron==="DID 202F"?" · via 202F":"")+(v.boost_begrensd?" · ≥2,55":"");
+  if(k==="rail_act"&&v.rail_cmd!=null)sub=`gevraagd ${fmt(v.rail_cmd,0)} · ${fmt(v.rail_dev,0)} %`;
+  if(k==="coolant"&&al.coolant_reden)sub=al.coolant_reden;
+  if(k==="voltage"&&(v.rpm||0)<=500)sub="motor uit: geen alarm";
+  return {a,lbl,val,unit,sub,cls:(["oranje","rood"].includes(a)?a:"")+(age>15&&k!=="mil"?" stale":"")};
+}
+function paintTile(el,t){
+  el.className="tile"+(el.classList.contains("wide")?" wide":"")+(t.cls?" "+t.cls:"");
+  el.querySelector(".val").innerHTML=`${t.val}<span class="unit">${t.unit}</span>`;el.querySelector(".sub").textContent=t.sub;
+}
+
+// ---------- dashboard Rijden ----------
+const RKEYS=["rpm","coolant","boost_act","load","voltage"];
+const RRANGE={rpm:[0,4500],coolant:[40,120],boost_act:[100,280],load:[0,100],voltage:[11,15]};
+const pct=(k,x)=>{const [lo,hi]=RRANGE[k];return Math.max(0,Math.min(100,(x-lo)/(hi-lo)*100))};
+function renderRijden(full){
+  if(!$("#rijden").classList.contains("on"))return;
+  if(full||!$("#r_rpm").firstChild){const al=APP.CFG.alarms||{};
+    for(const k of RKEYS){const th=al[k]&&(k==="coolant"||k==="rpm")?[[al[k].oranje,""],[al[k].rood,"r"]]:[];
+      $("#r_"+k).innerHTML=`<div class="lbl">${SMAP[k][1]}</div><div class="val">–</div><div class="sub"></div><div class="meter"><i></i>`+
+        th.filter(([x])=>x!=null).map(([x,c])=>`<b class="${c}" style="left:${pct(k,x)}%"></b>`).join("")+"</div>"}}
+  for(const k of RKEYS){const el=$("#r_"+k),x=S.values[k];paintTile(el,tileData(k));el.querySelector(".meter i").style.width=x==null?"0":pct(k,x)+"%"}
+  const sp=S.values.speed,age=S.age.speed??99;
+  $("#spVal").textContent=fmt(sp,0);$("#hero").classList.toggle("stale",sp==null||age>15);
+  $("#spArc").setAttribute("stroke-dasharray",`${sp==null?0:Math.min(100,sp/140*100)} 100`);
+}
 buildTiles();
 let audio,lastRed=new Set();
 function beep(){try{audio=audio||new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;o.connect(g);g.connect(audio.destination);g.gain.value=.25;o.start();o.stop(audio.currentTime+.4)}catch(e){}}
@@ -282,22 +393,9 @@ function tick(){
   $("#cdot").style.background=c.status==="verbonden"?"var(--ok)":c.status==="verbinden"||c.status==="opstarten"?"var(--warn)":"var(--bad)";
   $("#ctxt").textContent=(c.status==="verbonden"?(S.tripActive?"rit loopt":"verbonden · motor uit"):c.status)+(c.status!=="verbonden"&&c.error?` · ${c.error}`:"");
   const red=new Set();
-  for(const [k,lbl,u,d] of TILES){
-    const el=$("#t_"+k),a=al[ALARMKEY[k]]||al[k];
-    const age=S.age[k==="fuel"?"maf":k]??99;
-    el.className="tile "+(["ok","oranje","rood"].includes(a)?a:"")+(age>15&&k!=="mil"?" stale":"");
-    if(a==="rood")red.add(lbl);
-    let val=typeof v[k]==="string"?`<span style="font-size:18px">${esc(v[k])}</span>`:fmt(v[k],d),unit=u,sub="";
-    if(k==="mil"){val=v.mil==null?"–":v.mil?"AAN":"uit";if(v.dtc_count!=null)sub=`${v.dtc_count} code(s)`}
-    if(k==="fuel"){if(v.l100!=null){val=fmt(v.l100,1);unit="L/100";sub=`${fmt(v.fuel_lph,1)} L/u`}else{val=fmt(v.fuel_lph,1);unit="L/u";sub="stilstand"}
-      if(S.tank.factor&&S.tank.factor!==1)sub+=` · ×${S.tank.factor}`}
-    if(k==="boost_act"&&v.boost_cmd!=null)sub=`gevr. ${fmt(v.boost_cmd,0)} · Δ ${fmt(v.boost_dev,0)}`+(v.boost_bron==="DID 202F"?" · via 202F":"")+(v.boost_begrensd?" · ≥255":"");
-    if(k==="rail_act"&&v.rail_cmd!=null)sub=`gevr. ${fmt(v.rail_cmd,0)} · ${fmt(v.rail_dev,0)} %`;
-    if(k==="coolant"&&al.coolant_reden)sub=al.coolant_reden;
-    if(k==="voltage"&&(v.rpm||0)<=500)sub="motor uit: geen alarm";
-    el.querySelector(".val").innerHTML=`${val}<span class="unit">${unit}</span>`;
-    el.querySelector(".sub").textContent=sub;
-  }
+  for(const [k] of TILES){const t=tileData(k);paintTile($("#t_"+k),t);if(t.a==="rood")red.add(t.lbl)}
+  for(const k of RKEYS)if((al[ALARMKEY[k]]||al[k])==="rood")red.add(SMAP[k][1]);
+  renderRijden();
   if([...red].some(x=>!lastRed.has(x)))beep();lastRed=red;
   $("#banner").style.display=red.size?"block":"none";$("#banner").textContent=red.size?"ALARM: "+[...red].join(", "):"";
   const ond=Object.values(S.healthEval.kengetallen||{}).filter(i=>i.status==="oranje"||i.status==="rood").map(i=>`${i.status==="rood"?"Controleren":"Let op"}: ${i.naam}`);
@@ -459,7 +557,7 @@ function renderSensors(full){
   }
   for(const [k,,,d] of SENSORS){const el=document.getElementById("sv_"+k);if(!el)continue;
     let x=v[k];if(k==="fuel")x=v.l100!=null?v.l100:v.fuel_lph;if(k==="mil")x=v.mil==null?null:(v.mil?"AAN":"uit");
-    el.textContent=x==null?"–":typeof x==="number"?fmt(x,d):String(x);
+    el.textContent=x==null?"–":typeof x==="number"?fmt(x*(SCALE[k]||1),d):String(x);
     const age=S.age[k==="fuel"?"maf":k];el.style.opacity=age!=null&&age>15?.4:1}
 }
 setInterval(()=>renderSensors(false),700);
@@ -535,7 +633,7 @@ $("#backupBtn").onclick=()=>{
 
 // ---------- start ----------
 // De app start de meetdienst zelf bij openen (na toestemming). Hier alleen de laatst gekozen tab herstellen.
-{let t="ov";try{t=localStorage.getItem("tab")||"ov"}catch(e){}show(t)}
+{let t="";try{t=localStorage.getItem("tab")||""}catch(e){}show(t)}
 if(!Native.hasPermission())S.conn.error="Bluetooth-toestemming nodig";
 </script>
 </body>
