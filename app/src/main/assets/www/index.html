@@ -106,6 +106,29 @@ textarea{width:100%;min-height:260px;font:13px/1.4 ui-monospace,monospace}
 .bigbtn{min-height:56px;flex:1}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:12px}
 .seg button{min-height:48px;border:none;border-radius:10px;background:none;color:var(--dim);font:600 15px var(--sans)}.seg button.on{background:var(--actbg);color:var(--accent)}
+.mhero{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.van{position:relative;width:100%;max-width:320px}.van svg{width:100%;height:auto;display:block}
+.vanbadge,.zz{display:none;position:absolute}.m-aandacht .vanbadge,.m-stop .vanbadge{display:block;top:2%;right:2%;width:28px;height:28px;border-radius:50%;background:var(--warn)}
+.m-stop .vanbadge{background:var(--bad)}.vanbadge::after{content:"!";display:block;color:var(--bg);font:800 20px/28px var(--sans)}
+.m-slaapt .van svg{opacity:.45}.m-slaapt .zz{display:block;top:0;right:8%;color:var(--dim);font:700 26px var(--num)}.zz small{font-size:18px;vertical-align:super}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;font-weight:700;font-size:18px;background:var(--okbg);color:var(--ok)}
+.pill::before{content:"";width:10px;height:10px;border-radius:50%;background:currentColor}
+.m-aandacht .pill{background:#3A2614;color:var(--warn)}.m-stop .pill{background:var(--bad);color:var(--bg)}.m-slaapt .pill{background:var(--card2);color:var(--dim)}
+.mhero .miles{font-size:17px;line-height:1.4}.m-stop .miles{font-style:normal;color:var(--txt);font-weight:600}
+.reasons{align-self:stretch;border-top:1px solid var(--line);text-align:left}
+.reason{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;border:none;border-bottom:1px solid var(--line);background:none;color:var(--txt);font:16px var(--sans);text-align:left;padding:0}
+.reason i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--warn)}.reason i.stop{background:var(--bad)}.reason i.ok{background:var(--ok)}
+.reason span{flex:1}.reason b{color:var(--dim);font-size:20px}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.metric{display:flex;flex-direction:column}.metric span{font-size:13px;color:var(--dim)}.metric b{font:600 28px/1.1 var(--num)}.metric .unit{font-size:14px;color:var(--dim);margin-left:3px}
+.code-card{display:flex;flex-direction:column;gap:4px;padding:12px;background:var(--card2);border-radius:12px;margin:10px 0}.code-card p{margin:0;font-size:14px}
+.ond{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}.bar.wide{width:100%}
+details>summary::-webkit-details-marker{display:none}
+.cnts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.cnt{display:flex;flex-direction:column;align-items:center;padding:10px 4px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.cnt b{font:600 40px/1 var(--num)}.cnt span{font-size:13px;color:var(--dim)}
+.cnt.warn{background:var(--warnbg);border:2px solid var(--warn)}.cnt.warn b{color:var(--warn)}.cnt.warn span{color:var(--txt)}
+[hidden]{display:none!important}
 /* Dimstanden (Kampeermodus): avond ~75 %, nacht = gedimde aardetinten zonder fel wit */
 html.dim-avond body{filter:brightness(.75)}
 html.dim-nacht{--bg:#0A0907;--card:#12100D;--card2:#14120E;--navbg:#0A0907;--actbg:#1A1813;--line:#1C1A15;--txt:#8C8270;--dim:#6E6450;--na:#3A3429;--ok:#6B7745;--accent:#8C8270;--warn:#A85F2E;--solar:#8F6E33}
@@ -179,15 +202,22 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 </section>
 
 <section id="dtc">
-  <div class="card"><button class="btn" id="readDtc">Foutcodes uitlezen</button> <span class="dim" id="dtcStatus"></span></div>
-  <div id="dtcOut"></div>
+  <div class="seg" role="tablist"><button role="tab" data-dt="c" class="on">Codes</button><button role="tab" data-dt="r">Readiness</button><button role="tab" data-dt="m">Mode 06</button></div>
+  <div data-dp="c">
+  <button class="btn" id="readDtc" style="width:100%;margin-bottom:8px">Foutcodes uitlezen</button>
+  <p class="dim" id="dtcStatus" style="margin:0 0 10px;min-height:1em"></p>
+  <div id="dtcOut"><div class="card dim">Nog niet uitgelezen. Tik op "Foutcodes uitlezen" met het contact aan.</div></div>
+  <div class="card"><h3>Foutcodes wissen</h3>
+    <p class="dim">Alleen als de oorzaak is opgelost. Motor uit, contact aan.</p>
+    <button class="btn danger" id="clearBtn" style="width:100%">Foutcodes wissen…</button></div>
+  </div>
+  <div data-dp="r" hidden><div id="dtcReady"><div class="card dim">De readiness-monitoren komen mee bij "Foutcodes uitlezen" (tab Codes).</div></div></div>
+  <div data-dp="m" hidden>
   <div class="card"><h3>Mode 06 – testresultaten van de ECU</h3>
     <p class="dim">De ECU test zichzelf tijdens het rijden. Waarden zijn ruw; de grenzen staan in dezelfde schaal.</p>
     <button class="btn ghost" id="m06Btn">Mode 06 uitlezen</button> <span id="m06Msg" class="dim"></span>
     <div id="m06Out" class="scroll" style="margin-top:10px"></div></div>
-  <div class="card"><h3>Foutcodes wissen</h3>
-    <p class="dim">Alleen als de oorzaak is opgelost. Motor uit, contact aan.</p>
-    <button class="btn danger" id="clearBtn">Foutcodes wissen…</button></div>
+  </div>
 </section>
 
 <section id="rit">
@@ -212,13 +242,33 @@ pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospa
 </section>
 
 <section id="gz">
-  <div class="card">Per rit worden kengetallen gemeten onder vergelijkbare omstandigheden en vergeleken met <b>de eigen basislijn van deze bus</b> (vanaf 5 ritten). Dit geeft <b>signalen, geen diagnose</b>.
-    <div class="dim" id="gzInfo" style="margin-top:6px"></div></div>
+  <div class="card mhero" id="mHero">
+    <div class="van"><svg viewBox="0 0 360 220" role="img" aria-label="Miles, een Sprinter-camper met hoog dak"><ellipse cx="185" cy="197" rx="172" ry="9" fill="#000" fill-opacity=".7"/><ellipse cx="322" cy="180" rx="9" ry="17" fill="#000"/><path d="M22 176 L20 66 Q20 58 28 57 L214 40 Q224 39 232 44 L296 50 Q304 51 307 58 L320 102 L337 120 Q341 124 341 130 L341 170 Q341 176 335 176 L268 184 Q264 184 264 180 L250 180 A25 25 0 0 0 200 180 L100 180 A25 25 0 0 0 50 180 L28 180 Q22 180 22 176 Z" fill="#26221B" stroke="#D9C49A" stroke-width="2.5" stroke-linejoin="round"/><path d="M232 44 L296 50 Q304 51 307 58 L320 102 L337 120 Q341 124 341 130 L341 170 Q341 176 335 176 L268 184 Q264 184 264 180 L262 122 L242 100 Z" fill="#302B22"/><path d="M60 49 L130 42.6 L130 46 L60 52.4 Z M140 41.8 L210 35.4 L210 38.8 L140 45.2 Z" fill="#D9C49A"/><path d="M250 40 L254 22" stroke="#D9C49A" stroke-width="2" stroke-linecap="round"/><path d="M236 52 L298 58 L313 100 L246 98 Z M196 52 L228 49 L237 94 L196 97 Z M110 60 L184 55 L184 96 L110 98 Z M30 64 L98 60 L98 98 L30 100 Z" fill="#0A0907"/><path d="M262 94 L282 60 M270 96 L288 66 M200 92 L214 54 M122 94 L142 60 M130 95 L148 62 M40 96 L58 66" stroke="#D9C49A" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/><path d="M30 58 L212 41 M232 44 L242 100 L262 122 M22 124 L262 116 M262 122 L337 121" stroke="#EEE7D6" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M190 52 L190 172 M104 58 L104 172 M246 100 L316 103 M264 160 L341 155" stroke="#D9C49A" stroke-opacity=".4" stroke-width="1.8" fill="none"/><path d="M182 112h-8 M96 114h-8" stroke="#D9C49A" stroke-width="2.5" stroke-linecap="round"/><path d="M236 84 L247 83 L247 97 L236 98 Z M282 130 L326 128 L326 152 L282 156 Z" fill="#0A0907" stroke="#D9C49A" stroke-width="1.5"/><path d="M286 138 L322 136 M286 145 L322 143" stroke="#D9C49A" stroke-width="2"/><path d="M265 126 L280 127 L280 138 L265 136 Z M329 126 L339 126 L339 136 L329 137 Z" fill="#EEE7D6"/><path d="M290 163 L318 161 L318 168 L290 170 Z" fill="#D9C49A"/><ellipse cx="75" cy="182" rx="19" ry="22" fill="#0A0907" stroke="#D9C49A" stroke-width="2"/><ellipse cx="75" cy="182" rx="10" ry="12" fill="#3A3429"/><ellipse cx="225" cy="182" rx="19" ry="22" fill="#0A0907" stroke="#D9C49A" stroke-width="2"/><ellipse cx="225" cy="182" rx="10" ry="12" fill="#3A3429"/></svg>
+      <span class="vanbadge"></span><span class="zz">z<small>z</small></span></div>
+    <span class="pill" id="mPill"></span>
+    <p class="miles" id="mCopy"></p>
+    <div id="mReasons" class="reasons"></div>
+    <span class="dim" style="font-size:13px" id="mWhen"></span>
+  </div>
   <div id="gzDtc"></div>
-  <div class="card"><h3>Kengetallen</h3><div class="scroll"><table id="gzTab"></table></div></div>
-  <div class="card"><h3>Mode 06-marges</h3><p class="dim">Elke rit automatisch na 20 min motorlooptijd. Oranje = marge meer dan gehalveerd sinds de eerste meting.</p>
-    <div class="scroll"><table id="gzM06"></table></div></div>
-  <div class="card"><h3>Logboek</h3><table id="gzEv"></table></div>
+  <div class="card" id="mAccu"></div>
+  <div class="card" id="mKoel"></div>
+  <div class="card" id="mOnd"><h3>Onderhoud</h3><div id="ondList"></div>
+    <details id="ondAdd" style="margin-top:8px"><summary class="btn ghost" style="display:flex;align-items:center;justify-content:center;list-style:none">+ Onderhoudspunt toevoegen</summary>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+        <label class="dim" style="font-size:13px">Naam<input id="ondNaam" placeholder="bijv. Olie &amp; filter" style="width:100%"></label>
+        <label class="dim" style="font-size:13px">Interval (km)<input id="ondInt" inputmode="numeric" placeholder="bijv. 15000" style="width:100%"></label>
+        <label class="dim" style="font-size:13px">Al gereden sinds de laatste beurt (km)<input id="ondAl" inputmode="numeric" placeholder="0" style="width:100%"></label>
+        <button class="btn" id="ondSave">Opslaan</button><span class="dim" id="ondMsg"></span></div></details>
+    <p class="dim" style="font-size:13px;margin:10px 0 0">Km worden geteld via de ritten in de app sinds je invoer. De kilometerstand zelf is niet via OBD te lezen.</p></div>
+  <div class="card" id="mWoon"></div>
+  <details class="card" id="kgBox"><summary style="min-height:44px;display:flex;align-items:center;font:600 22px var(--num)">Alle kengetallen</summary>
+    <p class="dim">Per rit worden kengetallen gemeten onder vergelijkbare omstandigheden en vergeleken met <b>de eigen basislijn van deze bus</b> (vanaf 5 ritten). Dit geeft <b>signalen, geen diagnose</b>.</p>
+    <div class="dim" id="gzInfo" style="margin-bottom:8px"></div>
+    <div class="scroll"><table id="gzTab"></table></div>
+    <h3 style="margin-top:16px">Mode 06-marges</h3><p class="dim">Elke rit automatisch na 20 min motorlooptijd. Oranje = marge meer dan gehalveerd sinds de eerste meting.</p>
+    <div class="scroll"><table id="gzM06"></table></div>
+    <h3 style="margin-top:16px">Logboek</h3><table id="gzEv"></table></details>
 </section>
 
 <section id="set">
@@ -448,7 +498,7 @@ function tick(){
   const m06=(S.healthEval.mode06||[]).filter(m=>m.status!=="ok").map(m=>`Mode 06: ${m.naam}`);
   const b2=[...S.dtcAlert.map(a=>`Nieuwe ${a.soort} foutcode ${a.code}`),...ond,...m06];
   $("#banner2").style.display=b2.length?"block":"none";$("#banner2").textContent=b2.length?b2.join(" · ")+" — tik voor details":"";
-  $("#bMiles").classList.toggle("on",b2.length>0);
+  const ms=milesStatus().lvl;$("#bMiles").classList.toggle("on",ms==="aandacht"||ms==="stop");$("#bMiles").style.background=ms==="stop"?"var(--bad)":"";
   const nCodes=v.dtc_count||S.dtcAlert.length||0;
   $("#bDtc").classList.toggle("on",nCodes>0);$("#bDtc").textContent=nCodes||"";
   $("#logline").textContent=(S.tripActive?`Rit loopt · log: ${S.logfile}`:"Geen rit actief: start automatisch zodra de motor draait")+
@@ -456,6 +506,9 @@ function tick(){
   if($("#rit").classList.contains("on"))renderTrip();
 }
 $("#banner2").onclick=()=>show("gz");
+$("#mReasons").onclick=e=>{const b=e.target.closest("[data-go]");if(!b||!b.dataset.go)return;const g=b.dataset.go;
+  if(g==="dtc")show("dtc","dtc");else if(g==="en")show("en","en");else if(g==="kg"){$("#kgBox").open=true;$("#kgBox").scrollIntoView({behavior:"smooth"})}else if(g==="ond")$("#mOnd").scrollIntoView({behavior:"smooth"})};
+setInterval(()=>{if(isOn("gz"))loadHealth()},5000);
 
 // ---------- gedeelde helpers voor de vaste dashboards ----------
 // Waarde alleen tonen als hij vers is (OBD 15 s, Victron-uitzending 90 s); anders null → "–" in grijs.
@@ -581,17 +634,25 @@ $("#readDtc").onclick=async()=>{
   $("#dtcStatus").textContent="uitlezen…";let r;
   try{r=await APP.readDtcs()}catch(e){$("#dtcStatus").textContent="Fout: "+e.message;return}
   $("#dtcStatus").textContent="uitgelezen "+new Date().toLocaleTimeString("nl-NL");
-  const list=(t,arr)=>`<div class="card"><h3>${t} (${arr.length})</h3>${arr.length?`<table>${arr.map(c=>
-    `<tr><td class="code">${c.code}</td><td>${esc(c.omschrijving)}${c.tip?`<br><span class="dim">Tip: ${esc(c.tip)}</span>`:""}</td></tr>`).join("")}</table>`:'<span class="tag ok">geen codes</span>'}</div>`;
-  let html=`<div class="card big">Motorlampje (MIL): <b style="color:${r.mil?"var(--bad)":"var(--ok)"}">${r.mil?"AAN":"uit"}</b></div>`;
-  html+=list("Opgeslagen",r.opgeslagen||[])+list("Pending (nog niet bevestigd)",r.pending||[]);
-  html+=r.permanent_nb?'<div class="card"><h3>Permanent</h3><span class="dim">Niet ondersteund door deze ECU (EOBD).</span></div>':list("Permanent",r.permanent||[]);
-  if(r.freeze_code&&r.freeze_code.length)html+=`<div class="card"><h3>Freeze frame bij ${r.freeze_code[0]} <span class="dim">[nog niet geverifieerd op deze auto]</span></h3><table>`+
-    Object.entries(r.freeze).map(([k,[v,u]])=>`<tr><td>${k}</td><td><b>${v}</b> ${u}</td></tr>`).join("")+"</table></div>";
-  html+='<div class="card"><h3>Readiness-monitoren</h3><table>'+Object.entries(r.readiness||{}).map(([k,v])=>
-    `<tr><td>${k}</td><td><span class="tag ${v==="klaar"?"ok":"no"}">${v}</span></td></tr>`).join("")+"</table></div>";
+  const op=r.opgeslagen||[],pe=r.pending||[],pm=r.permanent||[];
+  const cnt=(lbl,arr,nb)=>`<div class="cnt${!nb&&arr.length?" warn":""}"><b>${nb?"–":arr.length}</b><span>${lbl}</span></div>`;
+  const codes=[...op.map(c=>[c,"OPGESLAGEN"]),...pe.map(c=>[c,"IN AFWACHTING"]),...pm.map(c=>[c,"PERMANENT"])];
+  let html=`<div class="cnts">${cnt("opgeslagen",op)}${cnt("in afwachting",pe)}${cnt("permanent",pm,r.permanent_nb)}</div>
+    <div class="card row" style="justify-content:space-between"><span>Motorlampje (MIL)</span><b style="color:${r.mil?"var(--bad)":"var(--ok)"}">${r.mil?"AAN":"uit"}</b></div>`;
+  html+=codes.length?codes.map(([c,lab])=>`<div class="card"><div class="row"><span class="code">${c.code}</span><span class="tag ${r.mil?"bad":"no"}">${lab}</span></div>
+      <p style="margin:8px 0 4px;font-weight:600">${esc(c.omschrijving)}</p>${c.tip?`<p class="dim" style="margin:0">${esc(c.tip)}</p>`:""}</div>`).join("")
+    :'<div class="card"><span class="tag ok">GEEN CODES</span> <span class="dim">Er staan geen opgeslagen of wachtende foutcodes in de ECU.</span></div>';
+  if(r.permanent_nb)html+='<p class="dim" style="font-size:13px">Permanente codes: niet ondersteund door deze ECU (EOBD).</p>';
+  if(r.freeze_code&&r.freeze_code.length)html+=`<details class="card"><summary style="min-height:44px;display:flex;align-items:center;font-weight:600">Freeze frame bij ${r.freeze_code[0]}</summary>
+    <p class="dim" style="margin:4px 0">[nog niet geverifieerd op deze auto]</p><table>`+
+    Object.entries(r.freeze).map(([k,[v,u]])=>`<tr><td class="dim">${k}</td><td><b>${v}</b> ${u}</td></tr>`).join("")+"</table></details>";
   $("#dtcOut").innerHTML=html;
+  const rd=Object.entries(r.readiness||{});
+  $("#dtcReady").innerHTML=`<div class="card"><h3>Readiness-monitoren</h3><p class="dim">${rd.filter(([,v])=>v==="klaar").length} van ${rd.length} klaar · uitgelezen ${new Date().toLocaleTimeString("nl-NL")}</p><table>`+
+    rd.map(([k,v])=>`<tr><td>${k}</td><td><span class="tag ${v==="klaar"?"ok":"no"}">${v}</span></td></tr>`).join("")+"</table></div>";
 };
+document.querySelectorAll("[data-dt]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-dt]").forEach(x=>{x.classList.toggle("on",x===b);x.setAttribute("aria-selected",x===b)});
+  document.querySelectorAll("[data-dp]").forEach(p=>p.hidden=p.dataset.dp!==b.dataset.dt)});
 $("#m06Btn").onclick=async()=>{
   if(S.conn.status!=="verbonden"){$("#m06Msg").textContent="Niet verbonden met de auto";return}
   $("#m06Msg").textContent="uitlezen…";let t;
@@ -650,11 +711,84 @@ $("#tankBtn").onclick=async()=>{
   $("#tankL").value="";APP.poll();loadRitten()};
 
 // ---------- gezondheid ----------
+// ---------- onderhoud per km (localStorage; gaat mee in de back-up) ----------
+function ondItems(){let a;try{a=JSON.parse(localStorage.getItem("onderhoud"))}catch(e){}return Array.isArray(a)?a:[]}
+function ondSave(a){try{localStorage.setItem("onderhoud",JSON.stringify(a))}catch(e){}ondCache=null}
+let ondCache=null,ondT=0;
+function onderhoud(){ // [{naam, interval, al, start, gereden, rest}]
+  if(ondCache&&Date.now()-ondT<30000)return ondCache;
+  const ritten=APP.store.get("ritten",[]),cur=S.trip;
+  ondCache=ondItems().map(o=>{let km=ritten.filter(r=>r._start>=o.start&&(!cur||r._start!==cur._start)).reduce((s,r)=>s+(r.afstand_km||0),0);
+    if(cur&&cur._start>=o.start)km+=cur.afstand_km||0;const gereden=(o.al||0)+km;return {...o,gereden,rest:o.interval-gereden}});
+  ondT=Date.now();return ondCache;
+}
+function renderOnd(){
+  const it=onderhoud();
+  $("#ondList").innerHTML=it.length?it.map((o,i)=>{const p=Math.max(0,Math.min(100,o.gereden/o.interval*100)),w=o.rest<1000;
+    return `<div class="ond"><div class="row" style="justify-content:space-between"><span>${esc(o.naam)}</span><b style="color:${w?"var(--warn)":"var(--txt)"}">${o.rest<=0?"nu aan de beurt":"nog "+fmt(o.rest,0)+" km"}</b></div>
+     <div class="bar wide"><i style="width:${p}%;background:${w?"var(--warn)":"var(--accent)"}"></i></div>
+     <div class="row" style="justify-content:space-between"><span class="dim" style="font-size:13px">elke ${fmt(o.interval,0)} km · gereden ${fmt(o.gereden,0)} km</span>
+      <span><button class="btn small ghost" data-ondok="${i}">Gedaan</button> <button class="btn small ghost" data-onddel="${i}">Wis</button></span></div></div>`}).join(""):
+    '<p class="dim" style="margin:0">Nog geen onderhoudspunten. Voeg er een toe, bijvoorbeeld olie &amp; filter.</p>';
+}
+$("#ondSave").onclick=()=>{const naam=$("#ondNaam").value.trim(),iv=parseInt($("#ondInt").value),al=parseInt($("#ondAl").value||"0");
+  if(!naam||!(iv>=100)||!(al>=0)){$("#ondMsg").textContent="Vul een naam en een interval van minstens 100 km in.";return}
+  const a=ondItems();a.push({naam,interval:iv,al,start:Date.now()});ondSave(a);
+  $("#ondNaam").value=$("#ondInt").value=$("#ondAl").value="";$("#ondMsg").textContent="";$("#ondAdd").open=false;loadHealth()};
+$("#ondList").onclick=async e=>{const ok=e.target.dataset.ondok,del=e.target.dataset.onddel;const a=ondItems();
+  if(ok!=null){if(!await ask("Onderhoud gedaan?",`<p>${esc(a[ok].naam)}: de teller begint opnieuw bij 0 km.</p>`,"Ja, gedaan"))return;closeModal();a[ok].al=0;a[ok].start=Date.now()}
+  if(del!=null){if(!await ask("Onderhoudspunt wissen?",`<p>${esc(a[del].naam)} wordt verwijderd.</p>`,"Ja, wissen"))return;closeModal();a.splice(del,1)}
+  if(ok!=null||del!=null){ondSave(a);loadHealth()}};
+
+// ---------- status van Miles: alleen uit echte data ----------
+function milesStatus(){
+  const v=S.values,al=S.alarms,he=S.healthEval||{},k=he.kengetallen||{},R=[];
+  if(v.mil&&(v.dtc_count||0)>0)R.push(["stop",`Motorlampje aan met ${v.dtc_count} foutcode(s)`,"dtc"]);
+  if(al.coolant==="rood")R.push(["stop",`Koelvloeistof ${fmt(v.coolant,0)} °C`,""]);
+  if(al.voltage==="rood"&&(v.rpm||0)>500)R.push(["stop",`Laadspanning ${fmt(v.voltage,1)} V`,""]);
+  for(const a of S.dtcAlert)R.push(["aandacht",`Foutcode ${a.code} (${a.soort})`,"dtc"]);
+  for(const i of Object.values(k))if(i.status==="oranje"||i.status==="rood")R.push(["aandacht",`${i.naam}: ${i.status==="rood"?"controleren":"let op"}`,"kg"]);
+  for(const m of he.mode06||[])if(m.status==="oranje"||m.status==="rood")R.push(["aandacht",`Mode 06: ${m.naam}`,"kg"]);
+  for(const o of onderhoud())if(o.rest<1000)R.push(["aandacht",`${o.naam} ${o.rest<=0?"is aan de beurt":"over "+fmt(o.rest,0)+" km"}`,"ond"]);
+  const soc=vic("shunt_soc");if(soc!=null&&soc<20)R.push(["aandacht",`Woonaccu ${fmt(soc,0)} %`,"en"]);
+  const heeftData=Object.values(k).some(i=>i.laatste!=null)||S.conn.status==="verbonden"||soc!=null;
+  const lvl=R.some(r=>r[0]==="stop")?"stop":R.length?"aandacht":heeftData?"fit":"slaapt";
+  return {lvl,R};
+}
+const MSTAT={fit:["Miles is fit","“Alles loopt soepel. Rijden maar.”"],aandacht:["Miles wil even aandacht","“Niks dringends hoor, maar kijk even mee.”"],
+  stop:["Miles moet nu stoppen","Stop veilig en kijk wat er is."],slaapt:["Miles slaapt","“Ik slaap nog. Zet het contact aan, dan word ik wakker.”"]};
+function kgVal(i,d){return i&&i.laatste!=null?`${fmt(i.laatste,d)}<span class="unit">${i.eenheid}</span>`:'<span style="color:var(--na)">–</span>'}
+function worst(...it){const o=["rood","oranje","ok","basislijn","geen data"];return it.filter(Boolean).map(i=>i.status).sort((a,b)=>o.indexOf(a)-o.indexOf(b))[0]||"geen data"}
+const metric=(lbl,val)=>`<div class="metric"><span>${lbl}</span><b>${val}</b></div>`;
+
 function loadHealth(){
-  APP.refreshHealth();const r=S.healthEval;
+  APP.refreshHealth();const r=S.healthEval,k=r.kengetallen||{};
+  const {lvl,R}=milesStatus();
+  $("#mHero").className="card mhero m-"+lvl;$("#mPill").textContent=MSTAT[lvl][0];$("#mCopy").textContent=MSTAT[lvl][1];
+  $("#mReasons").innerHTML=R.length?R.map(([l,t,go])=>`<button class="reason" data-go="${go}"><i class="${l}"></i><span>${esc(t)}</span>${go?"<b>›</b>":""}</button>`).join(""):
+    lvl==="fit"?(Object.values(k).some(i=>i.status==="ok")?'<div class="reason"><i class="ok"></i><span>Geen afwijkingen tegen de eigen basislijn</span></div>'
+      :'<div class="reason"><i class="ok"></i><span>Geen meldingen · basislijn wordt nog opgebouwd</span></div>'):"";
+  $("#mWhen").textContent=S.trip?`Rit loopt sinds ${S.trip.start||""}`:(r.ritten_basis?`${r.ritten_basis} rit(ten) in de basislijn`:"");
   $("#gzInfo").textContent=`${r.ritten_basis} eerdere rit(ten) met kengetallen.`;
-  $("#gzDtc").innerHTML=S.dtcAlert.map(a=>`<div class="card" style="border-color:var(--warn)"><span class="code">${a.code}</span> (${a.soort}, ${a.tijd})<br>${esc(a.omschrijving)}${a.tip?`<br><span class="dim">Tip: ${esc(a.tip)}</span>`:""}</div>`).join("");
-  const k=r.kengetallen||{},p=r.voortgang||{};
+  $("#gzDtc").innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Foutcodes</h3><span class="dim" style="font-size:14px">motorlampje ${S.values.mil==null?"–":S.values.mil?"AAN":"uit"}</span></div>`+
+    (S.dtcAlert.length?S.dtcAlert.map(a=>`<div class="code-card"><div><span class="code">${a.code}</span> <span class="tag no">${esc(a.soort).toUpperCase()}</span> <span class="dim" style="font-size:13px">${esc(a.tijd||"")}</span></div><b>${esc(a.omschrijving)}</b>${a.tip?`<p class="dim">${esc(a.tip)}</p>`:""}</div>`).join("")
+      :'<p class="dim" style="margin:8px 0">Geen nieuwe foutcodes gemeld. Lees ze uit voor de volledige lijst.</p>')+
+    `<button class="btn ghost" style="width:100%" onclick="show('dtc','dtc')">Naar Foutcodes</button></div>`;
+  const sd=k.startdip,ls=k.laadspanning,rs=k.rustspanning,st=vic("shunt_starter_v");
+  $("#mAccu").innerHTML=`<div class="row" style="justify-content:space-between"><h3 style="margin:0">Startaccu</h3>${ST[worst(sd,ls,rs)]||""}</div>
+    <div class="metrics">${metric("bij starten",kgVal(sd,1))}${metric("tijdens rijden",kgVal(ls,2))}${metric("in rust",st!=null?`${fmt(st,2)}<span class="unit">V</span>`:kgVal(rs,2))}</div>`;
+  const kr=k.koelreserve,ow=k.opwarmtijd,mx=S.trip?.max?.coolant;
+  $("#mKoel").innerHTML=`<div class="row" style="justify-content:space-between"><h3 style="margin:0">Koelvloeistof</h3>${ST[worst(kr,ow)]||""}</div>
+    <div class="metrics">${metric("opwarmen tot 80",kgVal(ow,1))}${metric("max deze rit",mx!=null?`${fmt(mx,0)}<span class="unit">°C</span>`:'<span style="color:var(--na)">–</span>')}${metric("boven 100 °C",kgVal(kr,1))}</div>
+    <p class="dim" style="font-size:13px;margin:8px 0 0">"Boven 100 °C" = koelreserve: minuten per uur boven 100 °C bij zware last, tegen je eigen basislijn.</p>`;
+  renderOnd();
+  const soc=vic("shunt_soc"),sv=vic("shunt_v"),sa=vic("shunt_a"),ost=vic("orion_state");
+  $("#mWoon").innerHTML=`<div class="row" style="justify-content:space-between"><h3 style="margin:0">Woonaccu</h3>${soc==null?'<span class="dim">buiten bereik</span>':soc<20?'<span class="tag no">LAAG</span>':'<span class="tag ok">GOED</span>'}</div>
+    <div class="row" style="gap:16px;margin-top:8px">${ring(soc,96,10,"var(--ok)",`<span class="rv" style="font-size:30px">${fmt(soc,0)}</span>`)}
+     <div class="metrics" style="flex:1;grid-template-columns:repeat(2,minmax(0,1fr))">${metric("spanning",sv!=null?fmt(sv,2)+" V":"–")}${metric("stroom",sa!=null?fmt(sa,1)+" A":"–")}
+      ${metric("resterend",sa!=null&&sa>0?"laadt":fmtRest(vic("shunt_rest_min")))}${metric("DC-DC",ost!=null?esc(ost):"–")}</div></div>
+    <button class="btn ghost" style="width:100%;margin-top:10px" onclick="show('en','en')">Naar Energie</button>`;
+  const p=r.voortgang||{};
   $("#gzTab").innerHTML="<tr><th>Kengetal</th><th>Laatste</th><th>Basislijn</th><th>Status</th><th>Venster</th></tr>"+Object.entries(k).map(([key,i])=>
    `<tr><td>${i.naam}${i.status==="oranje"||i.status==="rood"?`<br><span class="dim">Tip: ${i.tip}</span>`:""}</td>
    <td><b>${i.laatste??"–"}</b> ${i.laatste!=null?i.eenheid:""}${i.laatste!=null?`<br><span class="dim">${i.bron}</span>`:""}</td>
@@ -755,7 +889,7 @@ $("#cfgSave").onclick=async()=>{
 $("#cfgReset").onclick=()=>{$("#cfgTxt").value=JSON.stringify(APP.DEFAULT_CFG.alarms,null,1);$("#cfgMsg").textContent="Standaardwaarden geladen; tik Opslaan om te bewaren."};
 $("#backupBtn").onclick=()=>{
   const data={gemaakt:new Date().toISOString(),ritten:APP.store.get("ritten",[]),health:APP.store.get("health",[]),mode06:APP.store.get("mode06",[]),
-    events:APP.store.get("events",[]),tank:APP.store.get("tank",{}),cfg:APP.store.get("cfg",{})};
+    events:APP.store.get("events",[]),tank:APP.store.get("tank",{}),cfg:APP.store.get("cfg",{}),onderhoud:ondItems(),dashboards:dashCfg()};
   const r=Native.saveFile("sprinter_backup_"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(data,null,1));
   $("#backupMsg").textContent=r.startsWith("fout")?r:"Opgeslagen in "+r};
 
