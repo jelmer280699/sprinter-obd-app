@@ -660,6 +660,14 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
 
     fun historyJson(): String = synchronized(history) { JSONArray(history.toList()).toString() }
 
+    /** Reeks (tijd, waarde) van één grootheid uit de laatste [sinceMs] ms, voor trendlijnen in Android Auto. */
+    fun series(k: String, sinceMs: Long): List<Pair<Long, Double>> {
+        val from = System.currentTimeMillis() - sinceMs
+        return synchronized(history) {
+            history.filter { it.optLong("t") >= from && it.has(k) }.map { it.getLong("t") to it.optDouble(k) }
+        }
+    }
+
     // ---------------- acties (vanuit de interface, op een eigen thread) ----------------
     private fun needElm(): Elm = elm ?: throw IOException("Niet verbonden met de auto")
 

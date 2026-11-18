@@ -44,3 +44,8 @@ android {
         jvmTarget = "17"
     }
 }
+
+dependencies {
+    // Android Auto (Car App Library): dashboard als getekend scherm via de navigatiecategorie
+    implementation("androidx.car.app:app:1.4.0")
+}
