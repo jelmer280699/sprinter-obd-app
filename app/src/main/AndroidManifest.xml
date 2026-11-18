@@ -47,5 +47,18 @@
                 <category android:name="androidx.car.app.category.NAVIGATION" />
             </intent-filter>
         </service>
+        <!-- Tijdelijke test: welke categorie toont Android Auto bij zelf installeren? -->
+        <service android:name=".TestIotService" android:exported="true" android:label="Miles IoT">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT" />
+            </intent-filter>
+        </service>
+        <service android:name=".TestPoiService" android:exported="true" android:label="Miles POI">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
