@@ -33,11 +33,13 @@ jobs:
           KEYSTORE_PATH: ${{ runner.temp }}/release.p12
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: gradle assembleRelease bundleRelease --no-daemon --stacktrace
 
       - name: Hernoemen
         if: github.ref == 'refs/heads/main'
-        run: cp app/build/outputs/apk/release/app-release.apk "SprinterOBD-${{ github.run_number }}.apk"
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "SprinterOBD-${{ github.run_number }}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "SprinterOBD-${{ github.run_number }}.aab"
 
       - name: Publiceren als release
         if: github.ref == 'refs/heads/main'
@@ -46,5 +48,7 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Sprinter OBD build ${{ github.run_number }}
           body: "Automatisch gebouwd uit ${{ github.sha }}. Download de .apk hieronder op je telefoon en installeer."
-          files: SprinterOBD-${{ github.run_number }}.apk
+          files: |
+            SprinterOBD-${{ github.run_number }}.apk
+            SprinterOBD-${{ github.run_number }}.aab
           make_latest: true
