@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "nl.sprinterobd.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "nl.sprinterobd.app"
         minSdk = 31          // Android 12+: BLUETOOTH_CONNECT-machtiging
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
