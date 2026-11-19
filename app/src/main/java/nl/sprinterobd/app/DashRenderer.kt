@@ -28,9 +28,7 @@ import kotlin.math.pow
 class DashRenderer : SurfaceCallback {
     companion object {
         val PAGES = listOf("Rijden", "Hitte & bergop", "Energie")
-        private const val RW = 1100f
         private const val RH = 620f
-        private const val TOP = 70f
         private const val GAP = 14f
         private const val OBD_AGE = 10_000L
         private const val VIC_AGE = 90_000L
@@ -61,6 +59,13 @@ class DashRenderer : SurfaceCallback {
     private var surface: Surface? = null
     private var sw = 0; private var sh = 0
     private var visible: Rect? = null
+    // Referentievlak: hoogte vast (RH), breedte volgt de beeldverhouding van het autoscherm.
+    private var RW = 1100f
+    // Bovenrand van de tegels; groeit mee met de knop rechtsboven (ActionStrip) zodat die niets afdekt.
+    private var TOP = 96f
+    // Omrekening schermpixels -> referentievlak (voor aanraken)
+    private var k = 1f; private var ox = 0f; private var oy = 0f
+    private val backRect = RectF()
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
     private val tick = object : Runnable {
@@ -90,7 +95,14 @@ class DashRenderer : SurfaceCallback {
         if (abs(velocityX) > abs(velocityY) && abs(velocityX) > 300) setPage(page + if (velocityX < 0) 1 else -1)
     }
 
+    /** Tik op de terugknop linksboven (Car API 5+; anders blijft vegen werken). */
+    override fun onClick(x: Float, y: Float) {
+        val rx = (x - ox) / k; val ry = (y - oy) / k
+        if (rx >= backRect.left - 20f && rx <= backRect.right + 20f && ry >= backRect.top - 20f && ry <= backRect.bottom + 20f) prevPage()
+    }
+
     fun nextPage() = setPage(page + 1)
+    fun prevPage() = setPage(page - 1)
 
     private fun setPage(i: Int) {
         page = ((i % PAGES.size) + PAGES.size) % PAGES.size
@@ -134,11 +146,18 @@ class DashRenderer : SurfaceCallback {
         val c = try { s.lockCanvas(null) } catch (_: Exception) { return } ?: return
         try {
             c.drawColor(BG)
-            val a = visible?.takeIf { it.width() > 0 && it.height() > 0 } ?: Rect(0, 0, sw, sh)
-            val pad = 16f
-            val k = min((a.width() - 2 * pad) / RW, (a.height() - 2 * pad) / RH)
+            // Hele oppervlak gebruiken; alleen de knop rechtsboven (die het zichtbare deel bovenaan inkort)
+            // krijgt ruimte via een hogere kopregel.
+            val v = visible?.takeIf { it.width() > 0 && it.height() > 0 }
+            val a = if (v != null) Rect(v.left, 0, v.right, v.bottom) else Rect(0, 0, sw, sh)
+            val pad = 12f
+            val aw = a.width() - 2 * pad; val ah = a.height() - 2 * pad
+            RW = max(1100f, RH * aw / ah)
+            k = min(aw / RW, ah / RH)
+            ox = a.left + (a.width() - RW * k) / 2; oy = a.top + (a.height() - RH * k) / 2
+            TOP = if (v != null) ((v.top - oy) / k + 8f).coerceIn(96f, 150f) else 96f
             c.save()
-            c.translate(a.left + (a.width() - RW * k) / 2, a.top + (a.height() - RH * k) / 2)
+            c.translate(ox, oy)
             c.scale(k, k)
             header(c)
             val co = core
@@ -175,12 +194,20 @@ class DashRenderer : SurfaceCallback {
     }
 
     private fun header(c: Canvas) {
-        text(c, PAGES[page], 0f, 42f, 36f, TXT)
-        // paginastippen
+        val dy = (TOP - 96f) / 2
+        // terugknop linksboven met naam van het vorige dashboard (vooruit = knop rechtsboven)
+        val prev = PAGES[(page - 1 + PAGES.size) % PAGES.size]
+        p.reset(); p.typeface = cond; p.textSize = 26f
+        val bw = p.measureText("‹  $prev") + 48f
+        backRect.set(0f, dy + 10f, bw, dy + 66f)
+        rrect(c, 0f, dy + 10f, bw, 56f, 28f, CARD2, LINE, 2f)
+        text(c, "‹  $prev", 24f, dy + 47f, 26f, TXT)
+        // titel + paginastippen in het midden
+        text(c, PAGES[page], RW / 2, dy + 46f, 38f, TXT, cond, Paint.Align.CENTER)
         var x = RW / 2 - (28f + (PAGES.size - 1) * 16f) / 2
         for (i in PAGES.indices) {
             val w = if (i == page) 28f else 8f
-            rrect(c, x, 22f, w, 8f, 4f, if (i == page) ACCENT else LINE)
+            rrect(c, x, dy + 60f, w, 8f, 4f, if (i == page) ACCENT else LINE)
             x += w + 8f
         }
         // status-chips
@@ -189,29 +216,29 @@ class DashRenderer : SurfaceCallback {
         val vKeys = listOf("orion_out_a", "shunt_soc", "mppt_w")
         val vSeen = vKeys.count { co?.values?.containsKey(it) == true }
         val vFresh = vKeys.count { n(it, VIC_AGE) != null }
-        var right = RW
-        if (vSeen > 0) right = chip(c, right, "Victron $vFresh/$vSeen", vFresh == vSeen) - 10f
-        chip(c, right, "OBD", obdOk)
+        // status-chips naast de terugknop (rechtsboven zit de vooruitknop)
+        var left = bw + 14f
+        left = chip(c, left, dy + 21f, "OBD", obdOk) + 10f
+        if (vSeen > 0) chip(c, left, dy + 21f, "Victron $vFresh/$vSeen", vFresh == vSeen)
         // waarschuwingsbalk
         val reason = when {
             co == null -> null
             !obdOk -> "OBD-dongle niet verbonden · ${co.status}"
             else -> null
         }
-        if (reason != null) text(c, reason, RW / 2, 60f, 15f, WARN, condN, Paint.Align.CENTER)
+        if (reason != null) text(c, reason, RW / 2, dy + 90f, 15f, WARN, condN, Paint.Align.CENTER)
     }
 
-    /** Chip rechts uitgelijnd op [right]; geeft de linkerrand terug. */
-    private fun chip(c: Canvas, right: Float, label: String, ok: Boolean): Float {
+    /** Chip links uitgelijnd op [x], bovenkant [y]; geeft de rechterrand terug. */
+    private fun chip(c: Canvas, x: Float, y: Float, label: String, ok: Boolean): Float {
         p.reset(); p.typeface = cond; p.textSize = 17f
         val w = p.measureText(label) + 44f
-        val x = right - w
-        rrect(c, x, 12f, w, 34f, 17f, CARD2)
+        rrect(c, x, y, w, 34f, 17f, CARD2)
         p.reset(); p.isAntiAlias = true
         if (ok) { p.style = Paint.Style.FILL; p.color = OK } else { p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f; p.color = WARN }
-        c.drawCircle(x + 18f, 29f, 6f, p)
-        text(c, label, x + 30f, 35f, 17f, if (ok) TXT else DIM)
-        return x
+        c.drawCircle(x + 18f, y + 17f, 6f, p)
+        text(c, label, x + 30f, y + 23f, 17f, if (ok) TXT else DIM)
+        return x + w
     }
 
     private fun message(c: Canvas, title: String, sub: String) {
@@ -242,16 +269,21 @@ class DashRenderer : SurfaceCallback {
     // ---------------- Rijden ----------------
     private fun rijden(c: Canvas) {
         val co = core ?: return
-        val colW = 340f; val h2 = (RH - TOP - GAP) / 2
+        val colW = max(340f, (RW - 420f) / 2)
+        val h3 = (RH - TOP - 2 * GAP) / 3; val rx = RW - colW
         val rpm = n("rpm"); val load = n("load")
         val maxRpm = if (co.tripActive) co.trip.optJSONObject("max")?.optDouble("rpm")?.takeIf { !it.isNaN() } else null
-        tile(c, 0f, TOP, colW, h2, "Toerental", fmt(rpm), "rpm", maxRpm?.let { "max deze rit ${fmt(it)}" } ?: "", alarm("rpm"), 80f)
+        tile(c, 0f, TOP, colW, h3, "Toerental", fmt(rpm), "rpm", maxRpm?.let { "max deze rit ${fmt(it)}" } ?: "", alarm("rpm"), 60f)
         val avg = co.series("load", 300_000).map { it.second }.takeIf { it.isNotEmpty() }?.average()
-        tile(c, 0f, TOP + h2 + GAP, colW, h2, "Motorbelasting", fmt(load), "%", avg?.let { "gem. laatste 5 min ${fmt(it)} %" } ?: "", alarm("load"), 80f)
+        tile(c, 0f, TOP + h3 + GAP, colW, h3, "Motorbelasting", fmt(load), "%", avg?.let { "gem. laatste 5 min ${fmt(it)} %" } ?: "", alarm("load"), 60f)
+        val oA = n("orion_out_a", VIC_AGE); val oV = n("orion_out_v", VIC_AGE)
+        val dcW = if (oA != null && oV != null) oA * oV else null
+        tile(c, 0f, TOP + 2 * (h3 + GAP), colW, h3, "Dynamo · DC-DC" + (str("orion_state")?.let { " · $it" } ?: ""), fmt(dcW), "W",
+            oA?.let { "${fmt(it, 1)} A naar woonaccu" } ?: "", St.N, 60f)
 
-        gauge(c, RW / 2, TOP + 290f, 175f, n("speed"))
+        val gr = min(175f, (RH - TOP) / 2 - 40f)
+        gauge(c, RW / 2, TOP + (RH - TOP) / 2 + 10f, gr, n("speed"))
 
-        val h3 = (RH - TOP - 2 * GAP) / 3; val rx = RW - colW
         val v = n("voltage")
         val vSub = when { v == null -> "bij ECU"; (rpm ?: 0.0) > 400 && v >= 13.2 -> "dynamo laadt · bij ECU"; (rpm ?: 0.0) > 400 -> "laadt niet · bij ECU"; else -> "motor uit · bij ECU" }
         tile(c, rx, TOP, colW, h3, "Accu auto", fmt(v, 1), "V", vSub, alarm("voltage"), 60f)
@@ -294,7 +326,7 @@ class DashRenderer : SurfaceCallback {
     // ---------------- Hitte & bergop ----------------
     private fun hitte(c: Canvas) {
         val co = core ?: return
-        val w2 = (RW - GAP) / 2; val th = 330f
+        val w2 = (RW - GAP) / 2; val th = ((RH - TOP - GAP) * 0.62f)
         val cool = n("coolant")
         trend(c, 0f, TOP, w2, th, "Koelvloeistof", cool, co.series("coolant", 600_000), alarm("coolant"),
             thr("coolant", "oranje", 106.0), thr("coolant", "rood", 112.0), rate(co, "coolant"))
