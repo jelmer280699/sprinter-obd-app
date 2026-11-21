@@ -28,7 +28,7 @@ class DashSession : Session() {
 }
 
 class DashScreen(ctx: CarContext) : Screen(ctx) {
-    private val renderer = DashRenderer()
+    private val renderer = DashRenderer(ctx.assets)
 
     init {
         renderer.onPageChange = { invalidate() }

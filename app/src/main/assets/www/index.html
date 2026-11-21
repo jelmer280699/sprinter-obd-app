@@ -6,9 +6,14 @@
 <title>Sprinter OBD</title>
 <style>
 /* Ontwerp "Miles" – tokens: zie design/OVERDRACHT.md. Oude variabelenamen blijven bestaan zodat alle bestaande opmaak meegaat. */
-:root{--bg:#100F0C;--card:#1B1915;--card2:#262219;--navbg:#16140F;--actbg:#2E2A20;--line:#3A3429;--txt:#EEE7D6;--dim:#A89F8A;--na:#6F6858;
+:root{--bg:#100F0C;--card:#1B1915;--card2:#262219;--navbg:#16140F;--actbg:#2E2A20;--line:#3A3429;--txt:#EEE7D6;--dim:#A89F8A;--na:#8D8572;
  --ok:#9CAD63;--okbg:#2A3019;--warn:#E2823F;--warnbg:#2A1E12;--bad:#FF4B3A;--badbg:#3A1310;--accent:#D9C49A;--solar:#DDA645;
  --num:"Barlow Condensed","sans-serif-condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;--sans:Barlow,system-ui,sans-serif;color-scheme:dark}
+@font-face{font-family:"Barlow Condensed";font-weight:500;src:local("Barlow Condensed Medium"),url(fonts/BarlowCondensed-Medium.ttf) format("truetype")}
+@font-face{font-family:"Barlow Condensed";font-weight:600;src:local("Barlow Condensed SemiBold"),url(fonts/BarlowCondensed-SemiBold.ttf) format("truetype")}
+@font-face{font-family:Barlow;font-weight:400;src:local("Barlow Regular"),url(fonts/Barlow-Regular.ttf) format("truetype")}
+@font-face{font-family:Barlow;font-weight:500;src:local("Barlow Medium"),url(fonts/Barlow-Medium.ttf) format("truetype")}
+@font-face{font-family:Barlow;font-weight:600;src:local("Barlow SemiBold"),url(fonts/Barlow-SemiBold.ttf) format("truetype")}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.35 var(--sans)}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding:max(10px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
@@ -135,7 +140,7 @@ details>summary::-webkit-details-marker{display:none}
 .srow{display:flex;align-items:center;gap:10px;min-height:32px;font-size:16px}
 /* Dimstanden (Kampeermodus): avond ~75 %, nacht = gedimde aardetinten zonder fel wit */
 html.dim-avond body{filter:brightness(.75)}
-html.dim-nacht{--bg:#0A0907;--card:#12100D;--card2:#14120E;--navbg:#0A0907;--actbg:#1A1813;--line:#1C1A15;--txt:#8C8270;--dim:#6E6450;--na:#3A3429;--ok:#6B7745;--accent:#8C8270;--warn:#A85F2E;--solar:#8F6E33}
+html.dim-nacht{--bg:#0A0907;--card:#12100D;--card2:#14120E;--navbg:#0A0907;--actbg:#1A1813;--line:#1C1A15;--txt:#B9AE96;--dim:#A0957D;--na:#8A7F69;--ok:#8FA05A;--accent:#B8A57E;--warn:#D9803A;--solar:#B58A3E}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 pre{white-space:pre-wrap;word-break:break-all;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:45vh;overflow:auto;color:var(--dim)}
 </style>

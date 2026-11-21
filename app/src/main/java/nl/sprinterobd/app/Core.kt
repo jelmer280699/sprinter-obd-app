@@ -47,7 +47,10 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         val REF = listOf("rpm", "speed", "load", "coolant", "oil", "iat", "ambient", "voltage", "boost_act", "boost_cmd",
             "rail_act", "rail_cmd", "maf", "lambda", "throttle", "pedal", "baro", "runtime")
         private const val DIESEL_AFR = 14.5; private const val DIESEL_KG_L = 0.835
-        val DEFAULT_CFG = """{"did_onderzoek":true,"alarms":{"coolant":{"oranje":106,"rood":112},"coolant_koud":{"na_s":1200,"onder":70},
+        /** DID's die al geverifieerd zijn (logs/did_rapport.md, r >= 0,98); worden bij het onderzoek overgeslagen (did_skip_verified). */
+        private val VERIFIED_DIDS = setOf("2018", "621B", "2004", "6062", "60BE", "202A", "202F", "2039", "6063", "2042", "2038",
+            "61D9", "2016", "2034", "60BA", "606C", "6093", "6097", "609D")
+        val DEFAULT_CFG = """{"did_onderzoek":true,"did_interval_ms":1000,"did_skip_verified":true,"aa_hw":false,"alarms":{"coolant":{"oranje":106,"rood":112},"coolant_koud":{"na_s":1200,"onder":70},
             "oil":{"oranje":120,"rood":130},"iat":{"oranje":60,"rood":75},"boost_dev":{"oranje":20,"rood":40,"duur_s":5},
             "rail_dev":{"oranje":10,"rood":20,"duur_s":2},"voltage":{"laag_oranje":12.3,"laag_rood":12.0,"duur_s":60,"hoog_oranje":14.9,"hoog_rood":15.2},
             "load":{"oranje":85,"duur_s":60},"rpm":{"oranje":4000,"rood":4500}}}"""
@@ -56,6 +59,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     // ---------------- toestand ----------------
     val values = ConcurrentHashMap<String, Any>()
     val updated = ConcurrentHashMap<String, Long>()
+    /** Tijdstip van de laatste nieuwe meting (OBD of Victron); Android Auto tekent alleen opnieuw als dit veranderd is. */
+    @Volatile var dataStamp = 0L
     @Volatile var alarms: Map<String, String> = emptyMap()
     @Volatile var status = "niet verbonden"; @Volatile var error = ""
     var info = JSONObject(); @Volatile var multi: Boolean? = null
@@ -88,6 +93,9 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         try {
             val s = JSONObject(store.get("cfg", "{}"))
             if (s.has("did_onderzoek")) d.put("did_onderzoek", s.getBoolean("did_onderzoek"))
+            if (s.has("did_interval_ms")) d.put("did_interval_ms", s.getLong("did_interval_ms"))
+            if (s.has("did_skip_verified")) d.put("did_skip_verified", s.getBoolean("did_skip_verified"))
+            if (s.has("aa_hw")) d.put("aa_hw", s.getBoolean("aa_hw"))
             if (s.has("dev")) d.put("dev", s.getString("dev"))
             if (s.has("onzeker")) d.put("onzeker", s.getBoolean("onzeker"))
             if (s.has("orion_mac")) d.put("orion_mac", s.getString("orion_mac"))
@@ -144,7 +152,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         val now = System.currentTimeMillis()
         val type = m["type"] as? String ?: return
         vInfo.getOrPut(mac) { JSONObject() }.put("type", type).put("status", "ontvangen").put("laatst", now)
-        fun put(k: String, v: Any) { values[k] = v; updated[k] = now }
+        fun put(k: String, v: Any) { values[k] = v; updated[k] = now; dataStamp = now }
         when (type) {
             "orion" -> {
                 for ((k, v) in m) if (k != "type") put(if (k == "ruw") "orion_raw" else "orion_$k", v)
@@ -222,7 +230,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
                 s = dev.createRfcommSocketToServiceRecord(SPP)
                 s.connect()
                 socket = s
-                return Elm(s.inputStream, s.outputStream) { if (debugLeft-- > 0) ui.onEvent("debug", it) }
+                return Elm(s.inputStream, s.outputStream, { if (debugLeft-- > 0) ui.onEvent("debug", it) }, { debugLeft > 0 })
             } catch (e: Exception) {
                 last = e
                 try { s?.close() } catch (_: Exception) {}
@@ -283,8 +291,28 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private val dids: List<String> by lazy {
         try {
             val txt = ctx.assets.open("www/dids.js").bufferedReader().readText()
-            Regex("\"([0-9A-F]{4})\"").findAll(txt).map { it.groupValues[1] }.toList()
+            val all = Regex("\"([0-9A-F]{4})\"").findAll(txt).map { it.groupValues[1] }.toList()
+            // Al geverifieerde DID's overslaan (kost per stuk ~100 ms): onderzoek richt zich op de rest.
+            if (cfg.optBoolean("did_skip_verified", true)) all.filter { it !in VERIFIED_DIDS }.ifEmpty { all } else all
         } catch (_: Exception) { emptyList() }
+    }
+
+    // ---- meetharnas (Meet.kt): elke minuut een CSV-rij naast het ritlog ----
+    private var meetFile = ""
+    private var tMeet = 0L
+    private var timeouts = 0
+
+    private fun meetFlush(now: Long) {
+        val didOn = cfg.optBoolean("did_onderzoek", true)
+        val row = Meet.drainRow(tsSec.format(Date(now)), info.optString("elm", ""), info.optString("proto", ""), didOn,
+            cfg.optLong("did_interval_ms", 1000L), cfg.optBoolean("aa_hw", false), hersteld, timeouts)
+        timeouts = 0
+        if (!tripActive) return   // venster wel leeggemaakt, maar alleen tijdens een rit loggen
+        if (meetFile.isEmpty()) {
+            meetFile = "meet_${fileFmt.format(Date(now))}.csv"
+            store.appendLog(meetFile, Meet.HEADER + "\n")
+        }
+        store.appendLog(meetFile, row + "\n")
     }
 
     /** Aantal keer dat een gemist/afwijkend antwoord is opgevangen zonder opnieuw te verbinden. */
@@ -293,7 +321,9 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private fun pollLoop(e: Elm) {
         var cycle = 0; var nodata = 0; var errors = 0
         var tSlow = 0L; var tVslow = 0L; var tExtra = 0L; var tDtc = System.currentTimeMillis() - 540_000
+        var tResearch = 0L
         while (want) {
+            val t0 = System.nanoTime()
             try {
                 val got = HashMap(q(e, FAST))
                 nodata = if (got.isEmpty()) nodata + 1 else 0
@@ -320,9 +350,16 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
                     trip.put("_mode06", true)
                     try { storeMode06(Mode06.read(e)) } catch (_: Exception) {}
                 }
-                if (cfg.optBoolean("did_onderzoek", true) && (d("rpm") ?: 0.0) > 0) research(e)
+                // DID-onderzoek als duty-cycle: hooguit 1 DID per did_interval_ms (voorheen 1 per cyclus, ~100 ms van de ~170 ms cyclus).
+                val tr = System.currentTimeMillis()
+                if (cfg.optBoolean("did_onderzoek", true) && (d("rpm") ?: 0.0) > 0 && tr - tResearch >= cfg.optLong("did_interval_ms", 1000L)) {
+                    tResearch = tr
+                    research(e)
+                }
                 errors = 0
+                Meet.cycle(System.nanoTime() - t0)
             } catch (ex: IOException) {
+                timeouts++
                 // Eén gemist of afwijkend antwoord (time-out, 'STOPPED', 'CAN ERROR') is geen reden om de hele
                 // Bluetooth-verbinding opnieuw op te bouwen (kostte ~10 s per keer, ~25 % gaten; ritten 8-9 nov).
                 // Alleen opnieuw verbinden als de socket echt weg is of het 3x achter elkaar misgaat.
@@ -333,6 +370,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
                 Thread.sleep(250)
             }
             cycle++
+            val nm = System.currentTimeMillis()
+            if (nm - tMeet >= 60_000) { if (tMeet != 0L) meetFlush(nm); tMeet = nm }
         }
     }
 
@@ -454,6 +493,7 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     private fun update(nv: Map<String, Any>) {
         val now = System.currentTimeMillis()
         for ((k, v) in nv) { values[k] = v; updated[k] = now }
+        if (nv.isNotEmpty()) dataStamp = now
         // Afwijkingen alleen met draaiende motor (anders zijn ze betekenisloos, zie evaluateAlarms)
         val running = (d("rpm") ?: 0.0) > 500
         val bc = d("boost_cmd"); val ba = d("boost_act")
@@ -499,7 +539,9 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         if (tripActive) accumulateTrip(now)
 
         if (now - lastLog >= 1000) {
-            lastLog = now
+            // Vaste tijdsloten van 1 s (voorheen lastLog = now: met ~0,17 s cyclus gaf dat 1,0-1,17 s tussen rijen en ~88 % gelogde seconden).
+            // Loopt het >1,5 s achter (verbindingsgat), dan opnieuw uitlijnen: geen inhaal-rijen, en een echt gat blijft zichtbaar.
+            lastLog = if (now - lastLog > 1500) now else lastLog + 1000
             val h = JSONObject().put("t", now); for (k in LOG_KEYS) values[k]?.let { h.put(k, it) }
             synchronized(history) { history.addLast(h); while (history.size > 900) history.removeFirst() }
             if (tripActive && ((rpm ?: 0.0) > 0 || now - lastEngine < 60_000)) {
@@ -579,8 +621,8 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
         store.set("trip_live", "{}")
         store.set("tank", tank.toString())
         // Automatisch exporteren naar Downloads/SprinterOBD: deze rit + alles wat eerder nog niet geëxporteerd was.
-        val files = listOf(logfile, resFile).filter { it.isNotEmpty() }
-        logfile = ""; resFile = ""
+        val files = listOf(logfile, resFile, meetFile).filter { it.isNotEmpty() }
+        logfile = ""; resFile = ""; meetFile = ""
         Thread({
             val r = files.map { store.exportLog(it) } + store.exportPending()
             val ok = r.count { !it.startsWith("fout") }; val fout = r.filter { it.startsWith("fout") }
@@ -729,6 +771,9 @@ class Core(private val ctx: Context, private val store: Store, private val ui: L
     fun setCfg(json: String) {
         val s = JSONObject(json)
         if (s.has("did_onderzoek")) cfg.put("did_onderzoek", s.getBoolean("did_onderzoek"))
+        if (s.has("did_interval_ms")) cfg.put("did_interval_ms", s.getLong("did_interval_ms").coerceIn(100L, 10_000L))
+        if (s.has("did_skip_verified")) cfg.put("did_skip_verified", s.getBoolean("did_skip_verified"))
+        if (s.has("aa_hw")) cfg.put("aa_hw", s.getBoolean("aa_hw"))
         if (s.has("onzeker")) cfg.put("onzeker", s.getBoolean("onzeker"))
         s.optJSONObject("alarms")?.let { a -> val ca = cfg.getJSONObject("alarms"); a.keys().forEach { ca.put(it, a.get(it)) } }
         store.set("cfg", cfg.toString())

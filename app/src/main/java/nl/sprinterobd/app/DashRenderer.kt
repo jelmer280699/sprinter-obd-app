@@ -1,5 +1,6 @@
 package nl.sprinterobd.app
 
+import android.content.res.AssetManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -24,14 +25,23 @@ import kotlin.math.pow
  * Tekent de dashboards Rijden, Hitte & bergop en Energie op het Android Auto-scherm, in de stijl van het
  * ontwerp (design/OVERDRACHT.md). Alles wordt getekend op een referentievlak van 1100×620 en geschaald
  * naar het zichtbare deel van het scherm.
+ *
+ * Pakket 1 (voorstel P08/P10/P11): 3 Hz tekenen met dirty-check (i.p.v. 1 Hz), hergebruikte objecten,
+ * tekentijd in het meetlog, optioneel hardware-canvas (cfg aa_hw), Barlow Condensed uit assets/fonts (fallback: systeem),
+ * grotere labels (≈ 24 dp bij 1280×720 / 160 dpi), grotere terugknop en hoger contrast voor "geen data".
  */
-class DashRenderer : SurfaceCallback {
+class DashRenderer(private val assets: AssetManager? = null) : SurfaceCallback {
     companion object {
         val PAGES = listOf("Rijden", "Hitte & bergop", "Energie")
+        /** Korte namen voor de terugknop (houdt de kopregel vrij van de titel). */
+        private val SHORT = listOf("Rijden", "Hitte", "Energie")
         private const val RH = 620f
         private const val GAP = 14f
+        private const val HEAD = 108f            // basishoogte kopregel
         private const val OBD_AGE = 10_000L
         private const val VIC_AGE = 90_000L
+        private const val TICK_MS = 333L         // 3 Hz; het beeld gaat als 30 fps-video naar de head unit
+        private const val FORCE_MS = 1000L       // minstens 1× per seconde tekenen (waarden verouderen)
 
         private val BG = Color.parseColor("#100F0C")
         private val CARD = Color.parseColor("#1B1915")
@@ -39,7 +49,7 @@ class DashRenderer : SurfaceCallback {
         private val LINE = Color.parseColor("#3A3429")
         private val TXT = Color.parseColor("#EEE7D6")
         private val DIM = Color.parseColor("#A89F8A")
-        private val NA = Color.parseColor("#6F6858")
+        private val NA = Color.parseColor("#8D8572")   // was #6F6858 (3,2:1); nu 4,8:1 op de tegelkleur
         private val OK = Color.parseColor("#9CAD63")
         private val OKBG = Color.parseColor("#2A3019")
         private val WARN = Color.parseColor("#E2823F")
@@ -62,24 +72,46 @@ class DashRenderer : SurfaceCallback {
     // Referentievlak: hoogte vast (RH), breedte volgt de beeldverhouding van het autoscherm.
     private var RW = 1100f
     // Bovenrand van de tegels; groeit mee met de knop rechtsboven (ActionStrip) zodat die niets afdekt.
-    private var TOP = 96f
+    private var TOP = HEAD
     // Omrekening schermpixels -> referentievlak (voor aanraken)
     private var k = 1f; private var ox = 0f; private var oy = 0f
     private val backRect = RectF()
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
+
+    // Dirty-check: alleen tekenen bij nieuwe data, paginawissel of minstens elke FORCE_MS.
+    private var lastStamp = -1L
+    private var lastDraw = 0L
+    private var force = true
     private val tick = object : Runnable {
-        override fun run() { draw(); if (running) handler.postDelayed(this, 1000) }
+        override fun run() {
+            val now = System.currentTimeMillis()
+            val stamp = core?.dataStamp ?: 0L
+            if (force || stamp != lastStamp || now - lastDraw >= FORCE_MS) draw()
+            if (running) handler.postDelayed(this, TICK_MS)
+        }
     }
 
-    private val cond = Typeface.create("sans-serif-condensed", Typeface.BOLD)
-    private val condN = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+    private fun font(file: String, bold: Boolean): Typeface {
+        try { if (assets != null) return Typeface.createFromAsset(assets, "fonts/$file") } catch (_: Exception) { }
+        return Typeface.create("sans-serif-condensed", if (bold) Typeface.BOLD else Typeface.NORMAL)
+    }
+    private val cond = font("BarlowCondensed-SemiBold.ttf", true)
+    private val condN = font("BarlowCondensed-Medium.ttf", false)
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nl = Locale("nl", "NL")
+
+    // Hergebruikte objecten (voorheen per frame opnieuw aangemaakt)
+    private val rf = RectF()
+    private val dashTile = DashPathEffect(floatArrayOf(10f, 8f), 0f)
+    private val dashTrend = DashPathEffect(floatArrayOf(8f, 6f), 0f)
+    private val nfs = arrayOfNulls<NumberFormat>(4)
+    private val serCache = HashMap<String, Pair<Long, List<Pair<Long, Double>>>>()
 
     // ---------------- SurfaceCallback ----------------
     override fun onSurfaceAvailable(c: SurfaceContainer) {
         surface = c.surface; sw = c.width; sh = c.height
+        force = true
         if (!running) { running = true; handler.post(tick) }
     }
 
@@ -106,6 +138,7 @@ class DashRenderer : SurfaceCallback {
 
     private fun setPage(i: Int) {
         page = ((i % PAGES.size) + PAGES.size) % PAGES.size
+        force = true
         onPageChange?.invoke(); draw()
     }
 
@@ -131,19 +164,35 @@ class DashRenderer : SurfaceCallback {
     private fun thr(k: String, lvl: String, def: Double): Double =
         core?.cfg?.optJSONObject("alarms")?.optJSONObject(k)?.optDouble(lvl, def) ?: def
 
+    /** Reeks uit de historie, hooguit 1× per seconde opnieuw berekend (filteren van 900 JSON-rijen is duur). */
+    private fun ser(co: Core, key: String, ms: Long): List<Pair<Long, Double>> {
+        val now = System.currentTimeMillis(); val ck = "$key|$ms"
+        serCache[ck]?.let { if (now - it.first < 1000L) return it.second }
+        val s = co.series(key, ms)
+        serCache[ck] = now to s
+        return s
+    }
+
+    private fun nf(dec: Int): NumberFormat {
+        val i = dec.coerceIn(0, 3)
+        return nfs[i] ?: NumberFormat.getNumberInstance(nl).also { it.minimumFractionDigits = i; it.maximumFractionDigits = i; nfs[i] = it }
+    }
+
     private fun fmt(v: Double?, dec: Int = 0): String? {
         v ?: return null
-        val f = NumberFormat.getNumberInstance(nl); f.minimumFractionDigits = dec; f.maximumFractionDigits = dec
-        return f.format(v)
+        return nf(dec).format(v)
     }
 
     private fun st(v: Double?, s: St) = if (v == null) St.NA else s
 
     // ---------------- tekenen ----------------
     private fun draw() {
+        lastStamp = core?.dataStamp ?: 0L; lastDraw = System.currentTimeMillis(); force = false
         val s = surface ?: return
         if (!s.isValid) return
-        val c = try { s.lockCanvas(null) } catch (_: Exception) { return } ?: return
+        val t0 = System.nanoTime()
+        val hw = core?.cfg?.optBoolean("aa_hw", false) == true
+        val c = try { if (hw) s.lockHardwareCanvas() else s.lockCanvas(null) } catch (_: Exception) { return } ?: return
         try {
             c.drawColor(BG)
             // Hele oppervlak gebruiken; alleen de knop rechtsboven (die het zichtbare deel bovenaan inkort)
@@ -155,7 +204,7 @@ class DashRenderer : SurfaceCallback {
             RW = max(1100f, RH * aw / ah)
             k = min(aw / RW, ah / RH)
             ox = a.left + (a.width() - RW * k) / 2; oy = a.top + (a.height() - RH * k) / 2
-            TOP = if (v != null) ((v.top - oy) / k + 8f).coerceIn(96f, 150f) else 96f
+            TOP = if (v != null) ((v.top - oy) / k + 8f).coerceIn(HEAD, 156f) else HEAD
             c.save()
             c.translate(ox, oy)
             c.scale(k, k)
@@ -170,6 +219,7 @@ class DashRenderer : SurfaceCallback {
             c.restore()
         } finally {
             try { s.unlockCanvasAndPost(c) } catch (_: Exception) { }
+            Meet.draw(System.nanoTime() - t0)
         }
     }
 
@@ -181,72 +231,91 @@ class DashRenderer : SurfaceCallback {
         return p.measureText(t)
     }
 
+    private fun measure(t: String, size: Float, tf: Typeface = cond, spacing: Float = 0f): Float {
+        p.reset(); p.isAntiAlias = true; p.typeface = tf; p.textSize = size; p.letterSpacing = spacing
+        return p.measureText(t)
+    }
+
+    /** Als [text], maar krimpt (tot 70 %) zodat de tekst in [maxW] past. */
+    private fun textFit(c: Canvas, t: String, x: Float, y: Float, size: Float, color: Int, maxW: Float, tf: Typeface = cond,
+                        align: Paint.Align = Paint.Align.LEFT, spacing: Float = 0f): Float {
+        val w = measure(t, size, tf, spacing)
+        val s = if (w > maxW && w > 0f) max(size * 0.7f, size * maxW / w) else size
+        return text(c, t, x, y, s, color, tf, align, spacing)
+    }
+
     private fun rrect(c: Canvas, x: Float, y: Float, w: Float, h: Float, r: Float, fill: Int, stroke: Int? = null,
                       sw: Float = 0f, dashed: Boolean = false) {
-        val rf = RectF(x, y, x + w, y + h)
+        rf.set(x, y, x + w, y + h)
         p.reset(); p.isAntiAlias = true; p.style = Paint.Style.FILL; p.color = fill
         c.drawRoundRect(rf, r, r, p)
         if (stroke != null && sw > 0) {
             p.style = Paint.Style.STROKE; p.color = stroke; p.strokeWidth = sw
-            if (dashed) p.pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
+            if (dashed) p.pathEffect = dashTile
             rf.inset(sw / 2, sw / 2); c.drawRoundRect(rf, r, r, p)
         }
     }
 
     private fun header(c: Canvas) {
-        val dy = (TOP - 96f) / 2
-        // terugknop linksboven met naam van het vorige dashboard (vooruit = knop rechtsboven)
-        val prev = PAGES[(page - 1 + PAGES.size) % PAGES.size]
-        p.reset(); p.typeface = cond; p.textSize = 26f
-        val bw = p.measureText("‹  $prev") + 48f
-        backRect.set(0f, dy + 10f, bw, dy + 66f)
-        rrect(c, 0f, dy + 10f, bw, 56f, 28f, CARD2, LINE, 2f)
-        text(c, "‹  $prev", 24f, dy + 47f, 26f, TXT)
+        val dy = (TOP - HEAD) / 2
+        // terugknop linksboven met korte naam van het vorige dashboard (vooruit = knop rechtsboven); 76 hoog (touchdoel)
+        val prev = SHORT[(page - 1 + PAGES.size) % PAGES.size]
+        val bw = measure("‹  $prev", 30f) + 56f
+        val bh = 76f; val by = dy + 4f
+        backRect.set(0f, by, bw, by + bh)
+        rrect(c, 0f, by, bw, bh, 38f, CARD2, LINE, 2f)
+        text(c, "‹  $prev", 28f, by + bh / 2 + 10f, 30f, TXT)
         // titel + paginastippen in het midden
-        text(c, PAGES[page], RW / 2, dy + 46f, 38f, TXT, cond, Paint.Align.CENTER)
+        val title = PAGES[page]
+        text(c, title, RW / 2, dy + 50f, 38f, TXT, cond, Paint.Align.CENTER)
         var x = RW / 2 - (28f + (PAGES.size - 1) * 16f) / 2
         for (i in PAGES.indices) {
             val w = if (i == page) 28f else 8f
-            rrect(c, x, dy + 60f, w, 8f, 4f, if (i == page) ACCENT else LINE)
+            rrect(c, x, dy + 66f, w, 8f, 4f, if (i == page) ACCENT else LINE)
             x += w + 8f
         }
-        // status-chips
+        // status-chips naast de terugknop (rechtsboven zit de vooruitknop); alleen als ze de titel niet raken
         val co = core
         val obdOk = co?.status == "verbonden"
         val vKeys = listOf("orion_out_a", "shunt_soc", "mppt_w")
         val vSeen = vKeys.count { co?.values?.containsKey(it) == true }
         val vFresh = vKeys.count { n(it, VIC_AGE) != null }
-        // status-chips naast de terugknop (rechtsboven zit de vooruitknop)
+        val titleLeft = RW / 2 - measure(title, 38f) / 2 - 16f
         var left = bw + 14f
-        left = chip(c, left, dy + 21f, "OBD", obdOk) + 10f
-        if (vSeen > 0) chip(c, left, dy + 21f, "Victron $vFresh/$vSeen", vFresh == vSeen)
+        left = chip(c, left, dy + 20f, "OBD", obdOk) + 10f
+        if (vSeen > 0) {
+            val full = "Victron $vFresh/$vSeen"; val short = "V $vFresh/$vSeen"
+            val label = if (left + chipW(full) <= titleLeft) full else if (left + chipW(short) <= titleLeft) short else null
+            if (label != null) chip(c, left, dy + 20f, label, vFresh == vSeen)
+        }
         // waarschuwingsbalk
         val reason = when {
             co == null -> null
             !obdOk -> "OBD-dongle niet verbonden · ${co.status}"
             else -> null
         }
-        if (reason != null) text(c, reason, RW / 2, dy + 90f, 15f, WARN, condN, Paint.Align.CENTER)
+        if (reason != null) textFit(c, reason, RW / 2, dy + 100f, 20f, WARN, RW - 40f, condN, Paint.Align.CENTER)
     }
+
+    private fun chipW(label: String) = measure(label, 20f) + 48f
 
     /** Chip links uitgelijnd op [x], bovenkant [y]; geeft de rechterrand terug. */
     private fun chip(c: Canvas, x: Float, y: Float, label: String, ok: Boolean): Float {
-        p.reset(); p.typeface = cond; p.textSize = 17f
-        val w = p.measureText(label) + 44f
-        rrect(c, x, y, w, 34f, 17f, CARD2)
+        val w = chipW(label)
+        rrect(c, x, y, w, 44f, 22f, CARD2)
         p.reset(); p.isAntiAlias = true
-        if (ok) { p.style = Paint.Style.FILL; p.color = OK } else { p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f; p.color = WARN }
-        c.drawCircle(x + 18f, y + 17f, 6f, p)
-        text(c, label, x + 30f, y + 23f, 17f, if (ok) TXT else DIM)
+        if (ok) { p.style = Paint.Style.FILL; p.color = OK } else { p.style = Paint.Style.STROKE; p.strokeWidth = 3f; p.color = WARN }
+        c.drawCircle(x + 22f, y + 22f, 7f, p)
+        text(c, label, x + 36f, y + 30f, 20f, if (ok) TXT else DIM)
         return x + w
     }
 
     private fun message(c: Canvas, title: String, sub: String) {
-        text(c, title, RW / 2, RH / 2 - 10f, 44f, TXT, cond, Paint.Align.CENTER)
-        text(c, sub, RW / 2, RH / 2 + 36f, 22f, DIM, condN, Paint.Align.CENTER)
+        text(c, title, RW / 2, RH / 2 - 10f, 48f, TXT, cond, Paint.Align.CENTER)
+        text(c, sub, RW / 2, RH / 2 + 40f, 28f, DIM, condN, Paint.Align.CENTER)
     }
 
-    /** Tegel volgens component 1 (Tile) uit het ontwerp. */
+    /** Tegel volgens component 1 (Tile) uit het ontwerp; labels ≥ ~24 dp op 1280×720 / 160 dpi. */
     private fun tile(c: Canvas, x: Float, y: Float, w: Float, h: Float, label: String, value: String?, unit: String,
                      sub: String, state: St, vs: Float = 72f, valueColor: Int? = null) {
         val s = if (value == null) St.NA else state
@@ -256,14 +325,15 @@ class DashRenderer : SurfaceCallback {
             St.NA -> rrect(c, x, y, w, h, 16f, CARD, LINE, 2f, dashed = true)
             St.N -> rrect(c, x, y, w, h, 16f, CARD)
         }
-        text(c, label.uppercase(nl), x + 20f, y + 32f, 15f, DIM, cond, spacing = 0.1f)
         val tag = when (s) { St.W -> "WAARSCHUWING" to WARN; St.C -> "KRITIEK" to BAD; St.NA -> "GEEN DATA" to NA; else -> null }
-        if (tag != null) text(c, tag.first, x + w - 20f, y + 32f, 13f, tag.second, cond, Paint.Align.RIGHT, 0.08f)
-        val vy = y + 32f + vs * 0.95f + 10f
+        val tagW = if (tag != null) measure(tag.first, 18f, cond, 0.06f) else 0f
+        textFit(c, label.uppercase(nl), x + 20f, y + 34f, 21f, DIM, w - 40f - (if (tag != null) tagW + 14f else 0f), cond, spacing = 0.08f)
+        if (tag != null) text(c, tag.first, x + w - 20f, y + 34f, 18f, tag.second, cond, Paint.Align.RIGHT, 0.06f)
+        val vy = y + 36f + vs * 0.95f + 10f
         val vc = when { value == null -> NA; s == St.C -> BAD; valueColor != null -> valueColor; else -> TXT }
         val vw = text(c, value ?: "–", x + 20f, vy, vs, vc)
-        if (value != null && unit.isNotEmpty()) text(c, unit, x + 26f + vw, vy, vs * 0.35f, DIM)
-        if (sub.isNotEmpty()) text(c, sub, x + 20f, y + h - 18f, 16f, if (s == St.C) BAD else DIM, condN)
+        if (value != null && unit.isNotEmpty()) text(c, unit, x + 26f + vw, vy, vs * 0.4f, DIM)
+        if (sub.isNotEmpty()) textFit(c, sub, x + 20f, y + h - 18f, 21f, if (s == St.C) BAD else DIM, w - 40f, condN)
     }
 
     // ---------------- Rijden ----------------
@@ -274,7 +344,7 @@ class DashRenderer : SurfaceCallback {
         val rpm = n("rpm"); val load = n("load")
         val maxRpm = if (co.tripActive) co.trip.optJSONObject("max")?.optDouble("rpm")?.takeIf { !it.isNaN() } else null
         tile(c, 0f, TOP, colW, h3, "Toerental", fmt(rpm), "rpm", maxRpm?.let { "max deze rit ${fmt(it)}" } ?: "", alarm("rpm"), 60f)
-        val avg = co.series("load", 300_000).map { it.second }.takeIf { it.isNotEmpty() }?.average()
+        val avg = ser(co, "load", 300_000).map { it.second }.takeIf { it.isNotEmpty() }?.average()
         tile(c, 0f, TOP + h3 + GAP, colW, h3, "Motorbelasting", fmt(load), "%", avg?.let { "gem. laatste 5 min ${fmt(it)} %" } ?: "", alarm("load"), 60f)
         val oA = n("orion_out_a", VIC_AGE); val oV = n("orion_out_v", VIC_AGE)
         val dcW = if (oA != null && oV != null) oA * oV else null
@@ -303,24 +373,24 @@ class DashRenderer : SurfaceCallback {
     /** ArcGauge: 270°, baan in lijnkleur, vulling accent, één streep bij 120 km/u. */
     private fun gauge(c: Canvas, cx: Float, cy: Float, r: Float, speed: Double?) {
         val max = 140f
-        val rf = RectF(cx - r, cy - r, cx + r, cy + r)
-        p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 22f; p.strokeCap = Paint.Cap.ROUND
+        rf.set(cx - r, cy - r, cx + r, cy + r)
+        p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 24f; p.strokeCap = Paint.Cap.ROUND
         p.color = LINE; c.drawArc(rf, 135f, 270f, false, p)
         if (speed != null && speed > 0) {
             p.color = ACCENT; c.drawArc(rf, 135f, 270f * (min(speed.toFloat(), max) / max), false, p)
         }
         // streep bij 120
         val ang = Math.toRadians((135.0 + 270.0 * 120 / max))
-        p.strokeCap = Paint.Cap.BUTT; p.strokeWidth = 4f; p.color = TXT
+        p.strokeCap = Paint.Cap.BUTT; p.strokeWidth = 5f; p.color = TXT
         val r1 = r - 18f; val r2 = r + 18f
         c.drawLine(cx + (r1 * Math.cos(ang)).toFloat(), cy + (r1 * Math.sin(ang)).toFloat(),
             cx + (r2 * Math.cos(ang)).toFloat(), cy + (r2 * Math.sin(ang)).toFloat(), p)
         val vs = 150f
         text(c, fmt(speed) ?: "–", cx, cy + vs * 0.33f, vs, if (speed == null) NA else TXT, cond, Paint.Align.CENTER)
-        text(c, "km/u", cx, cy + vs * 0.33f + 44f, 30f, DIM, condN, Paint.Align.CENTER)
-        text(c, "0", cx - r * 0.72f, cy + r * 0.92f, 18f, DIM, condN, Paint.Align.CENTER)
-        text(c, "140", cx + r * 0.72f, cy + r * 0.92f, 18f, DIM, condN, Paint.Align.CENTER)
-        text(c, "120", cx + (r + 34f) * Math.cos(ang).toFloat(), cy + (r + 34f) * Math.sin(ang).toFloat() + 6f, 16f, DIM, condN, Paint.Align.CENTER)
+        text(c, "km/u", cx, cy + vs * 0.33f + 46f, 34f, DIM, condN, Paint.Align.CENTER)
+        text(c, "0", cx - r * 0.72f, cy + r * 0.92f, 22f, DIM, condN, Paint.Align.CENTER)
+        text(c, "140", cx + r * 0.72f, cy + r * 0.92f, 22f, DIM, condN, Paint.Align.CENTER)
+        text(c, "120", cx + (r + 36f) * Math.cos(ang).toFloat(), cy + (r + 36f) * Math.sin(ang).toFloat() + 7f, 20f, DIM, condN, Paint.Align.CENTER)
     }
 
     // ---------------- Hitte & bergop ----------------
@@ -328,16 +398,16 @@ class DashRenderer : SurfaceCallback {
         val co = core ?: return
         val w2 = (RW - GAP) / 2; val th = ((RH - TOP - GAP) * 0.62f)
         val cool = n("coolant")
-        trend(c, 0f, TOP, w2, th, "Koelvloeistof", cool, co.series("coolant", 600_000), alarm("coolant"),
+        trend(c, 0f, TOP, w2, th, "Koelvloeistof", cool, ser(co, "coolant", 600_000), alarm("coolant"),
             thr("coolant", "oranje", 106.0), thr("coolant", "rood", 112.0), rate(co, "coolant"))
         val iat = n("iat"); val amb = n("ambient")
-        trend(c, w2 + GAP, TOP, w2, th, "Inlaatlucht", iat, co.series("iat", 600_000), alarm("iat"),
+        trend(c, w2 + GAP, TOP, w2, th, "Inlaatlucht", iat, ser(co, "iat", 600_000), alarm("iat"),
             thr("iat", "oranje", 60.0), thr("iat", "rood", 75.0),
             if (iat != null && amb != null) "${fmt(iat - amb)} °C boven buiten" else "")
 
         val by = TOP + th + GAP; val bh = RH - by; val w3 = (RW - 2 * GAP) / 3
         val load = n("load")
-        val hi = co.series("load", 600_000).reversed().takeWhile { it.second >= 80 }
+        val hi = ser(co, "load", 600_000).reversed().takeWhile { it.second >= 80 }
         val loadSub = if (hi.size >= 60) "al ${(hi.first().first - hi.last().first) / 60_000 + 1} min boven 80 %" else "laatste 10 min"
         tile(c, 0f, by, w3, bh, "Motorbelasting", fmt(load), "%", loadSub, alarm("load"), 64f)
         val ba = n("boost_act"); val bc = n("boost_cmd")
@@ -351,43 +421,42 @@ class DashRenderer : SurfaceCallback {
     }
 
     private fun rate(co: Core, k: String): String {
-        val s = co.series(k, 120_000); if (s.size < 30) return ""
+        val s = ser(co, k, 120_000); if (s.size < 30) return ""
         val dtMin = (s.last().first - s.first().first) / 60_000.0; if (dtMin < 0.5) return ""
         val r = (s.last().second - s.first().second) / dtMin
         return when { r > 0.2 -> "stijgt +${fmt(r, 1)} °C/min"; r < -0.2 -> "daalt ${fmt(r, 1)} °C/min"; else -> "stabiel" }
     }
 
-    /** TrendChart: 10 min, lijn accent, waarschuwing/kritiek als stippellijnen. */
+    /** TrendChart: 10 min, lijn accent, waarschuwing/kritiek als stippellijnen (dikker: H.264 smeert dunne lijnen uit). */
     private fun trend(c: Canvas, x: Float, y: Float, w: Float, h: Float, label: String, v: Double?,
                       data: List<Pair<Long, Double>>, state: St, warn: Double, crit: Double, sub: String) {
         val s = st(v, state)
         tile(c, x, y, w, h, label, fmt(v), "°C", "", s, 64f)
-        if (sub.isNotEmpty()) text(c, sub, x + w - 20f, y + 100f, 17f, if (s == St.C) BAD else DIM, condN, Paint.Align.RIGHT)
-        val gx = x + 20f; val gy = y + 130f; val gw = w - 40f; val gh = h - 175f
+        val vy = y + 36f + 64f * 0.95f + 10f
+        if (sub.isNotEmpty()) textFit(c, sub, x + w - 20f, vy, 22f, if (s == St.C) BAD else DIM, w * 0.5f, condN, Paint.Align.RIGHT)
+        val gx = x + 20f; val gy = y + 138f; val gw = w - 40f; val gh = h - 138f - 50f
         val now = System.currentTimeMillis(); val from = now - 600_000
         val vals = data.map { it.second }
         val lo = min(vals.minOrNull() ?: warn - 30, warn - 30) - 2
         val hi = max(vals.maxOrNull() ?: crit, crit) + 3
         fun py(v: Double) = (gy + gh - (v - lo) / (hi - lo) * gh).toFloat()
         fun px(t: Long) = gx + ((t - from).toFloat() / 600_000f) * gw
-        p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 2f
-        p.pathEffect = DashPathEffect(floatArrayOf(8f, 6f), 0f)
         for ((lvl, col, name) in listOf(Triple(warn, WARN, "waarschuwing"), Triple(crit, BAD, "kritiek"))) {
+            p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 3f
+            p.pathEffect = dashTrend
             p.color = col; c.drawLine(gx, py(lvl), gx + gw, py(lvl), p)
-            text(c, "${fmt(lvl)} $name", gx + 4f, py(lvl) - 6f, 14f, col, condN)
-            p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 2f
-            p.pathEffect = DashPathEffect(floatArrayOf(8f, 6f), 0f)
+            text(c, "${fmt(lvl)} $name", gx + 4f, py(lvl) - 7f, 18f, col, condN)
         }
         if (data.size >= 2) {
             val path = Path(); val fill = Path()
             data.forEachIndexed { i, (t, v) -> if (i == 0) path.moveTo(px(t), py(v)) else path.lineTo(px(t), py(v)) }
             fill.addPath(path); fill.lineTo(px(data.last().first), gy + gh); fill.lineTo(px(data.first().first), gy + gh); fill.close()
             p.reset(); p.isAntiAlias = true; p.style = Paint.Style.FILL; p.color = ACCENT; p.alpha = 28; c.drawPath(fill, p)
-            p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 3f; p.color = ACCENT
+            p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.color = ACCENT
             p.strokeJoin = Paint.Join.ROUND; c.drawPath(path, p)
         }
-        text(c, "−10 min", gx, y + h - 16f, 14f, NA, condN)
-        text(c, "nu", gx + gw, y + h - 16f, 14f, NA, condN, Paint.Align.RIGHT)
+        text(c, "−10 min", gx, y + h - 16f, 18f, NA, condN)
+        text(c, "nu", gx + gw, y + h - 16f, 18f, NA, condN, Paint.Align.RIGHT)
     }
 
     // ---------------- Energie ----------------
@@ -413,16 +482,18 @@ class DashRenderer : SurfaceCallback {
             St.NA -> rrect(c, 0f, y2, ww, h2, 16f, CARD, LINE, 2f, dashed = true)
             else -> rrect(c, 0f, y2, ww, h2, 16f, CARD)
         }
-        text(c, "WOONACCU · LIFEPO4 280 AH", 20f, y2 + 32f, 15f, DIM, cond, spacing = 0.1f)
-        if (socSt == St.W) text(c, "WAARSCHUWING", ww - 20f, y2 + 32f, 13f, WARN, cond, Paint.Align.RIGHT, 0.08f)
-        if (socSt == St.NA) text(c, "GEEN DATA", ww - 20f, y2 + 32f, 13f, NA, cond, Paint.Align.RIGHT, 0.08f)
+        val socTag = when (socSt) { St.W -> "WAARSCHUWING" to WARN; St.NA -> "GEEN DATA" to NA; else -> null }
+        val socTagW = if (socTag != null) measure(socTag.first, 18f, cond, 0.06f) else 0f
+        textFit(c, "WOONACCU · LIFEPO4 280 AH", 20f, y2 + 34f, 21f, DIM, ww - 40f - (if (socTag != null) socTagW + 14f else 0f), cond, spacing = 0.08f)
+        if (socTag != null) text(c, socTag.first, ww - 20f, y2 + 34f, 18f, socTag.second, cond, Paint.Align.RIGHT, 0.06f)
         // SocRing
         val rcx = 130f; val rcy = y2 + h2 / 2 + 14f; val rr = 88f
         p.reset(); p.isAntiAlias = true; p.style = Paint.Style.STROKE; p.strokeWidth = 18f; p.color = LINE
         c.drawCircle(rcx, rcy, rr, p)
         if (soc != null) {
             p.color = if (socSt == St.W) WARN else OK; p.strokeCap = Paint.Cap.ROUND
-            c.drawArc(RectF(rcx - rr, rcy - rr, rcx + rr, rcy + rr), -90f, 360f * (soc / 100).toFloat(), false, p)
+            rf.set(rcx - rr, rcy - rr, rcx + rr, rcy + rr)
+            c.drawArc(rf, -90f, 360f * (soc / 100).toFloat(), false, p)
         }
         text(c, soc?.let { fmt(it) + "%" } ?: "–", rcx, rcy + 18f, 52f, if (soc == null) NA else TXT, cond, Paint.Align.CENTER)
         val laadt = (bA ?: 0.0) > 0.3
@@ -432,9 +503,9 @@ class DashRenderer : SurfaceCallback {
             "vermogen" to (batW?.let { (if (it > 0) "+" else "") + fmt(it) + " W" } ?: "–"),
             "resterend" to (if (laadt) "– laadt" else n("shunt_rest_min", VIC_AGE)?.let { fmtRest(it) } ?: "–"))
         rows.forEachIndexed { i, (k, v) ->
-            val ry = y2 + 82f + i * 50f
-            text(c, k, 270f, ry, 20f, DIM, condN)
-            text(c, v, ww - 24f, ry, 30f, TXT, cond, Paint.Align.RIGHT)
+            val ry = y2 + 86f + i * 50f
+            text(c, k, 270f, ry, 24f, DIM, condN)
+            text(c, v, ww - 24f, ry, 34f, TXT, cond, Paint.Align.RIGHT)
         }
         val sv = n("voltage"); val inV = n("orion_in_v", VIC_AGE)
         val car = sv ?: inV

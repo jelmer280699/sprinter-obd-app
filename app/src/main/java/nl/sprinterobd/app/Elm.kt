@@ -12,36 +12,49 @@ import kotlin.concurrent.thread
  * en lees-modes door. Mode 04 (codes wissen) alleen via clearDtcs("WISSEN").
  * Eén commando tegelijk (synchronized); een leesthread zet binnenkomende data in een wachtrij.
  */
-class Elm(input: InputStream, private val out: OutputStream, private val onDebug: (String) -> Unit = {}) {
+class Elm(
+    input: InputStream,
+    private val out: OutputStream,
+    private val onDebug: (String) -> Unit = {},
+    /** Debugregels alleen opbouwen als dit true geeft (voorkomt string/Regex-werk per commando als debug uit staat). */
+    private val debugOn: () -> Boolean = { false }
+) {
 
     companion object {
         val READ_ONLY = Regex("^(AT(?!PP)[A-Z0-9@ .]*|(01|02|03|07|09|0A)[0-9A-F]*|06[0-9A-F]{2}|22[0-9A-F]{4})$")
         private const val EOF = "\u0000EOF"
         private val ERRORS = listOf("UNABLE TO CONNECT", "CAN ERROR", "BUS INIT", "BUS ERROR", "STOPPED", "BUFFER FULL", "DATA ERROR")
+        // Eenmalig gecompileerd (voorheen per aanroep/regel/byte in parseBytes).
+        private val RE_EOL = Regex("[\\r\\n]+")
+        private val RE_MULTI_START = Regex("^[0-9A-F]:")
+        private val RE_MULTI_LINE = Regex("^([0-9A-F]):\\s*(.*)$")
+        private val RE_LEN3 = Regex("^[0-9A-F]{3}$")
+        private val RE_WS = Regex("\\s+")
+        private val RE_BYTE = Regex("^[0-9A-F]{2}$")
 
         /** Antwoordtekst -> bytes (single- en multi-frame); null bij NO DATA. */
         fun parseBytes(text: String): IntArray? {
-            val lines = text.replace(">", "").split(Regex("[\\r\\n]+")).map { it.trim() }
+            val lines = text.replace(">", "").split(RE_EOL).map { it.trim() }
                 .filter { it.isNotEmpty() && !it.startsWith("SEARCHING") }
             if (lines.isEmpty()) return null
             val joined = lines.joinToString(" ").uppercase()
             if (joined.contains("NO DATA")) return null
             for (e in ERRORS) if (joined.contains(e)) throw IOException(joined)
             if (joined.trim() == "?") throw IOException("ELM begrijpt commando niet")
-            val multi = lines.any { Regex("^[0-9A-F]:").containsMatchIn(it) }
+            val multi = lines.any { RE_MULTI_START.containsMatchIn(it) }
             var total: Int? = null
             val out = ArrayList<Int>()
             for (raw in lines) {
                 var l = raw
                 if (multi) {
-                    val m = Regex("^([0-9A-F]):\\s*(.*)$").find(l)
+                    val m = RE_MULTI_LINE.find(l)
                     if (m == null) {
-                        if (Regex("^[0-9A-F]{3}$").matches(l)) total = l.toInt(16)
+                        if (RE_LEN3.matches(l)) total = l.toInt(16)
                         continue
                     }
                     l = m.groupValues[2]
                 }
-                for (b in l.split(Regex("\\s+"))) if (Regex("^[0-9A-F]{2}$").matches(b)) out.add(b.toInt(16))
+                for (b in l.split(RE_WS)) if (RE_BYTE.matches(b)) out.add(b.toInt(16))
             }
             val arr = out.toIntArray()
             return if (total != null && total < arr.size) arr.copyOf(total) else arr
@@ -72,7 +85,8 @@ class Elm(input: InputStream, private val out: OutputStream, private val onDebug
     private fun raw(cmd: String, timeoutMs: Long): String {
         if (!alive) throw IOException("Verbinding verbroken")
         queue.clear()
-        onDebug("TX $cmd")
+        if (debugOn()) onDebug("TX $cmd")
+        val t0 = System.nanoTime()
         out.write((cmd + "\r").toByteArray(Charsets.US_ASCII))
         out.flush()
         val sb = StringBuilder()
@@ -85,8 +99,9 @@ class Elm(input: InputStream, private val out: OutputStream, private val onDebug
             sb.append(chunk)
             if (sb.contains('>')) break
         }
+        Meet.rtt(cmd, System.nanoTime() - t0)
         val r = sb.toString().replace(">", "")
-        onDebug("RX " + r.replace(Regex("[\\r\\n]+"), " | ").trim())
+        if (debugOn()) onDebug("RX " + r.replace(RE_EOL, " | ").trim())
         return r
     }
 
